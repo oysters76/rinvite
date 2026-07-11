@@ -36,6 +36,8 @@ pub struct AppState {
     pub invites: Arc<dyn InviteService>,
     pub verifier: Arc<dyn TokenVerifier>,
     pub public_base_url: String,
+    /// The e-invite HTML template, loaded once at startup.
+    pub einvite_template: Arc<str>,
 }
 
 /// Compose every route group and apply the shared middleware.

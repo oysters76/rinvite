@@ -1,150 +1,178 @@
-use crate::domain::guest::RsvpStatus;
+use std::sync::Arc;
+
+use chrono::{Datelike, NaiveTime, Timelike};
+use serde::Serialize;
+
+use crate::domain::error::DomainError;
 use crate::domain::port::inbound::InviteView;
 
-/// Minimal HTML-escape for text interpolated into the page. Guest and couple
-/// names are user-controlled, so this is the guard against stored XSS.
-fn escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(c),
+/// The e-invite web page template, embedded at compile time. Editing
+/// `assets/einvite/template.html` (or pointing `EINVITE_TEMPLATE` at a copy)
+/// restyles the page without touching Rust.
+const DEFAULT_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/einvite/template.html"
+));
+
+/// Load the template once at startup: the `EINVITE_TEMPLATE` file if set,
+/// otherwise the embedded default.
+pub fn load_template() -> Result<Arc<str>, DomainError> {
+    match std::env::var("EINVITE_TEMPLATE") {
+        Ok(path) => {
+            let body = std::fs::read_to_string(&path).map_err(|e| {
+                DomainError::Repository(format!("cannot read EINVITE_TEMPLATE {path}: {e}"))
+            })?;
+            Ok(Arc::from(body))
         }
+        Err(_) => Ok(Arc::from(DEFAULT_TEMPLATE)),
     }
-    out
 }
 
-/// Render the full e-invite web page (HTML + inline JS) for a guest.
-pub fn render_invite_page(view: &InviteView, token: &str) -> String {
+/// Data injected into the template's `#invite-data` JSON block. Field names are
+/// camelCased to match what the template's JS reads.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InvitePageData {
+    bride_name: String,
+    groom_name: String,
+    monogram: String,
+    families: String,
+    greeting: String,
+    date_big: String,
+    date_year: String,
+    time_text: String,
+    venue_name: String,
+    hall_name: String,
+    rsvp_by_text: String,
+    footer: String,
+    rsvp: RsvpData,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RsvpData {
+    endpoint: String,
+    max_party_size: u16,
+    status: String,
+    party_size: Option<u16>,
+    closed: bool,
+}
+
+/// Render the e-invite page by injecting this guest's data into the template.
+pub fn render_invite_page(template: &str, view: &InviteView, token: &str) -> String {
     let e = &view.event;
-    let couple = format!(
-        "{} {} &amp; {} {}",
-        escape(&e.bride_name),
-        escape(&e.bride_family_name),
-        escape(&e.groom_name),
-        escape(&e.groom_family_name),
-    );
-    let date = e.event_date.format("%A, %e %B %Y").to_string();
-    let time = format!(
-        "{} – {}",
-        e.start_time.format("%H:%M"),
-        e.end_time.format("%H:%M")
-    );
-    let rsvp_by = e.rsvp_by.format("%e %B %Y").to_string();
-
-    // The RSVP area: a read-only notice when closed, otherwise the form.
-    let rsvp_section = if view.rsvp_closed {
-        "<p class=\"closed\">RSVP is now closed. Please contact the hosts directly.</p>".to_owned()
-    } else {
-        let options: String = (1..=view.max_party_size)
-            .map(|n| {
-                let selected = if view.party_size == Some(n) {
-                    " selected"
-                } else {
-                    ""
-                };
-                format!("<option value=\"{n}\"{selected}>{n}</option>")
-            })
-            .collect();
-
-        let already = match view.rsvp_status {
-            RsvpStatus::Attending => {
-                "<p class=\"status\">You're currently marked as <b>attending</b>. You can update your response below.</p>"
-            }
-            RsvpStatus::Declined => {
-                "<p class=\"status\">You're currently marked as <b>not attending</b>. You can change your response below.</p>"
-            }
-            RsvpStatus::Pending => "",
-        };
-
-        format!(
-            r#"{already}
-    <form id="rsvp">
-      <fieldset>
-        <legend>Will you attend?</legend>
-        <label><input type="radio" name="attending" value="yes" checked> Joyfully accept</label>
-        <label><input type="radio" name="attending" value="no"> Regretfully decline</label>
-      </fieldset>
-      <label id="party">Number attending (including you):
-        <select name="party_size">{options}</select>
-      </label>
-      <button type="submit">Send RSVP</button>
-      <p id="result" role="status"></p>
-    </form>
-    <script>
-      const form = document.getElementById('rsvp');
-      const party = document.getElementById('party');
-      const result = document.getElementById('result');
-      function syncParty() {{
-        const attending = form.attending.value === 'yes';
-        party.style.display = attending ? '' : 'none';
-      }}
-      form.addEventListener('change', syncParty); syncParty();
-      form.addEventListener('submit', async (ev) => {{
-        ev.preventDefault();
-        const attending = form.attending.value === 'yes';
-        const body = {{ attending, party_size: attending ? Number(form.party_size.value) : 0 }};
-        result.textContent = 'Sending…';
-        try {{
-          const res = await fetch('/invite/{token}/rsvp', {{
-            method: 'POST',
-            headers: {{ 'content-type': 'application/json' }},
-            body: JSON.stringify(body),
-          }});
-          const data = await res.json().catch(() => ({{}}));
-          result.textContent = res.ok
-            ? 'Thank you — your RSVP has been recorded.'
-            : ('Something went wrong: ' + (data.error || res.status));
-        }} catch (err) {{
-          result.textContent = 'Network error, please try again.';
-        }}
-      }});
-    </script>"#
-        )
+    let data = InvitePageData {
+        bride_name: e.bride_name.clone(),
+        groom_name: e.groom_name.clone(),
+        monogram: format!("{}&{}", initial(&e.bride_name), initial(&e.groom_name)),
+        families: format!(
+            "Together with the {} & {} families",
+            e.bride_family_name, e.groom_family_name
+        ),
+        greeting: format!("Dear {},", view.guest_name),
+        date_big: format!(
+            "{} of {}",
+            ordinal(e.event_date.day()),
+            e.event_date.format("%B")
+        ),
+        date_year: e.event_date.format("%Y").to_string(),
+        time_text: format!(
+            "From {} to {}",
+            fmt_time(e.start_time),
+            fmt_time(e.end_time)
+        ),
+        venue_name: e.venue_name.clone(),
+        hall_name: e.hall_name.clone(),
+        rsvp_by_text: format!(
+            "RSVP by {} {}",
+            ordinal(e.rsvp_by.day()),
+            e.rsvp_by.format("%B")
+        ),
+        footer: format!(
+            "{} & {} · {}",
+            e.bride_name,
+            e.groom_name,
+            e.event_date.format("%B %Y")
+        ),
+        rsvp: RsvpData {
+            endpoint: format!("/invite/{token}/rsvp"),
+            max_party_size: view.max_party_size,
+            status: view.rsvp_status.as_str().to_owned(),
+            party_size: view.party_size,
+            closed: view.rsvp_closed,
+        },
     };
 
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Wedding Invitation</title>
-  <style>
-    body {{ font-family: Georgia, 'Times New Roman', serif; margin: 0; background: #faf7f2; color: #3a3a3a; }}
-    .card {{ max-width: 640px; margin: 2rem auto; background: #fff; padding: 2.5rem; border: 1px solid #e7ddd0; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,.05); }}
-    h1 {{ text-align: center; font-weight: normal; font-size: 2rem; margin: 0 0 .25rem; }}
-    .greeting {{ text-align: center; color: #8a7a63; margin-bottom: 2rem; }}
-    dl {{ display: grid; grid-template-columns: max-content 1fr; gap: .5rem 1rem; margin: 0 0 2rem; }}
-    dt {{ color: #8a7a63; }}
-    fieldset {{ border: 1px solid #e7ddd0; border-radius: 6px; margin: 0 0 1rem; }}
-    label {{ display: block; margin: .5rem 0; }}
-    button {{ font: inherit; padding: .6rem 1.4rem; background: #8a7a63; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }}
-    .closed, .status {{ background: #f3ede3; padding: 1rem; border-radius: 6px; }}
-    #result {{ min-height: 1.2em; color: #5a5a5a; }}
-  </style>
-</head>
-<body>
-  <main class="card">
-    <h1>{couple}</h1>
-    <p class="greeting">Dear {guest}, you are warmly invited to our wedding.</p>
-    <dl>
-      <dt>Date</dt><dd>{date}</dd>
-      <dt>Time</dt><dd>{time}</dd>
-      <dt>Hall</dt><dd>{hall}</dd>
-      <dt>Venue</dt><dd>{venue}</dd>
-      <dt>RSVP by</dt><dd>{rsvp_by}</dd>
-    </dl>
-    {rsvp_section}
-  </main>
-</body>
-</html>"#,
-        guest = escape(&view.guest_name),
-        hall = escape(&e.hall_name),
-        venue = escape(&e.venue_name),
-    )
+    let json = serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_owned());
+    template.replace("__INVITE_JSON__", &escape_json_for_script(&json))
+}
+
+/// Escape a JSON string for safe embedding inside an HTML `<script>` block:
+/// `<`, `>`, `&`, and the JS line terminators become `\uXXXX` escapes (still
+/// valid JSON) so a guest name can't break out of the tag. This is the XSS
+/// guard now that guest/event text is injected as JSON.
+fn escape_json_for_script(json: &str) -> String {
+    json.replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026")
+        .replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029")
+}
+
+fn initial(name: &str) -> char {
+    name.trim()
+        .chars()
+        .next()
+        .unwrap_or('•')
+        .to_ascii_uppercase()
+}
+
+/// Ordinal day-of-month, e.g. 25 -> "25th", 22 -> "22nd".
+fn ordinal(day: u32) -> String {
+    let suffix = match (day % 10, day % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{day}{suffix}")
+}
+
+/// Friendly 12-hour time, e.g. "10:00 AM", "3:30 PM".
+fn fmt_time(t: NaiveTime) -> String {
+    let h24 = t.hour();
+    let (h12, ap) = match h24 {
+        0 => (12, "AM"),
+        1..=11 => (h24, "AM"),
+        12 => (12, "PM"),
+        _ => (h24 - 12, "PM"),
+    };
+    format!("{}:{:02} {}", h12, t.minute(), ap)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escaping_neutralizes_script_breakout() {
+        let escaped = escape_json_for_script(r#"{"greeting":"Dear </script><b>x</b>,"}"#);
+        assert!(!escaped.contains("</script>"));
+        assert!(escaped.contains("\\u003c"));
+    }
+
+    #[test]
+    fn time_and_ordinal_formats() {
+        assert_eq!(
+            fmt_time(NaiveTime::from_hms_opt(10, 0, 0).unwrap()),
+            "10:00 AM"
+        );
+        assert_eq!(
+            fmt_time(NaiveTime::from_hms_opt(15, 30, 0).unwrap()),
+            "3:30 PM"
+        );
+        assert_eq!(ordinal(25), "25th");
+        assert_eq!(ordinal(1), "1st");
+    }
 }

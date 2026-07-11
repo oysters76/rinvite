@@ -21,7 +21,11 @@ async fn view(
     Path(token): Path<String>,
 ) -> Result<Html<String>, ApiError> {
     let view = state.invites.view_invite(&token).await?;
-    Ok(Html(render_invite_page(&view, &token)))
+    Ok(Html(render_invite_page(
+        &state.einvite_template,
+        &view,
+        &token,
+    )))
 }
 
 #[derive(Deserialize)]

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use sqlx::postgres::PgPoolOptions;
 
-use adapter::inbound::http::{AppState, routes};
+use adapter::inbound::http::{AppState, html, routes};
 use adapter::outbound::argon2_hasher::Argon2Hasher;
 use adapter::outbound::clock::SystemClock;
 use adapter::outbound::jwt_issuer::JwtIssuer;
@@ -93,12 +93,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(InviteServiceImpl::new(events_repo, guests_repo, clock));
 
     // ===== Inbound adapter (HTTP) + serve ===================================
+    let einvite_template = html::load_template()?;
+
     let app = routes(AppState {
         auth,
         events,
         invites,
         verifier,
         public_base_url,
+        einvite_template,
     });
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
