@@ -1,0 +1,38 @@
+# Easy local/one-host deployment: the auth service + its Postgres.
+#
+#   cp .env.example .env      # then set JWT_SECRET  (openssl rand -hex 32)
+#   docker compose up --build
+#
+# The app creates its `users` table on boot, so no separate migration step.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-auth}
+      POSTGRES_DB: auth
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth -d auth"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Required (>=32 bytes). Errors out at boot if unset — set it in .env.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env, e.g. openssl rand -hex 32}
+      DATABASE_URL: postgres://auth:${POSTGRES_PASSWORD:-auth}@db:5432/auth
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
