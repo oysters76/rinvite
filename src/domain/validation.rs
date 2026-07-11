@@ -1,4 +1,6 @@
 use super::error::DomainError;
+use super::event::NewEvent;
+use super::guest::NewGuest;
 
 // Domain policy for what counts as an acceptable email/password. These are
 // pure functions (no framework, no I/O) so they hold no matter which inbound
@@ -49,6 +51,57 @@ pub fn validate_password(password: &str) -> Result<(), DomainError> {
         return Err(DomainError::InvalidInput(format!(
             "password must be between {PASSWORD_MIN_LEN} and {PASSWORD_MAX_LEN} characters"
         )));
+    }
+    Ok(())
+}
+
+const NAME_MAX_LEN: usize = 200;
+
+fn non_empty(field: &str, value: &str) -> Result<(), DomainError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(DomainError::InvalidInput(format!(
+            "{field} must not be empty"
+        )));
+    }
+    if trimmed.len() > NAME_MAX_LEN {
+        return Err(DomainError::InvalidInput(format!(
+            "{field} must be at most {NAME_MAX_LEN} characters"
+        )));
+    }
+    Ok(())
+}
+
+/// Event policy: names present, the ceremony ends after it starts, and the
+/// RSVP deadline is not after the event itself.
+pub fn validate_event(e: &NewEvent) -> Result<(), DomainError> {
+    non_empty("bride name", &e.bride_name)?;
+    non_empty("bride family name", &e.bride_family_name)?;
+    non_empty("groom name", &e.groom_name)?;
+    non_empty("groom family name", &e.groom_family_name)?;
+    non_empty("hall name", &e.hall_name)?;
+    non_empty("venue name", &e.venue_name)?;
+
+    if e.end_time <= e.start_time {
+        return Err(DomainError::InvalidInput(
+            "end time must be after start time".to_owned(),
+        ));
+    }
+    if e.rsvp_by > e.event_date {
+        return Err(DomainError::InvalidInput(
+            "RSVP-by date must be on or before the event date".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// Guest policy: a name, and a party size of at least one (the guest).
+pub fn validate_guest(g: &NewGuest) -> Result<(), DomainError> {
+    non_empty("guest name", &g.name)?;
+    if g.max_party_size < 1 {
+        return Err(DomainError::InvalidInput(
+            "max party size must be at least 1".to_owned(),
+        ));
     }
     Ok(())
 }

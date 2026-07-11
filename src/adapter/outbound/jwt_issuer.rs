@@ -1,11 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use jsonwebtoken::{EncodingKey, Header, encode};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::error::DomainError;
-use crate::domain::port::outbound::TokenIssuer;
+use crate::domain::port::outbound::{TokenIssuer, TokenVerifier};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
@@ -48,5 +48,20 @@ impl TokenIssuer for JwtIssuer {
             &EncodingKey::from_secret(self.secret.as_bytes()),
         )
         .map_err(|e| DomainError::TokenCreation(e.to_string()))
+    }
+}
+
+impl TokenVerifier for JwtIssuer {
+    fn verify(&self, token: &str) -> Result<Uuid, DomainError> {
+        // The default HS256 validation checks the signature and the `exp`
+        // claim; an expired or tampered token fails here.
+        let data = decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(self.secret.as_bytes()),
+            &Validation::default(),
+        )
+        .map_err(|_| DomainError::Unauthorized)?;
+
+        Uuid::parse_str(&data.claims.sub).map_err(|_| DomainError::Unauthorized)
     }
 }

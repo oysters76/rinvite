@@ -15,6 +15,21 @@ pub enum DomainError {
     #[error("{0}")]
     InvalidInput(String),
 
+    // The named thing does not exist — OR the caller isn't allowed to see it.
+    // We deliberately fold "forbidden" into "not found" for owner-scoped reads
+    // so we never confirm that someone else's resource exists.
+    #[error("{0} not found")]
+    NotFound(String),
+
+    #[error("the RSVP deadline has passed")]
+    RsvpClosed,
+
+    #[error("party size exceeds the maximum for this guest")]
+    PartySizeExceeded,
+
+    #[error("authentication required")]
+    Unauthorized,
+
     #[error("repository error: {0}")]
     Repository(String),
 
@@ -23,4 +38,7 @@ pub enum DomainError {
 
     #[error("token creation error: {0}")]
     TokenCreation(String),
+
+    #[error("pdf generation error: {0}")]
+    Pdf(String),
 }

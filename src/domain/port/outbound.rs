@@ -1,7 +1,10 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use super::super::error::DomainError;
+use super::super::event::Event;
+use super::super::guest::Guest;
 use super::super::model::User;
 
 // ===== Outbound ports (driven side) ========================================
@@ -28,4 +31,46 @@ pub trait PasswordHasher: Send + Sync {
 
 pub trait TokenIssuer: Send + Sync {
     fn issue(&self, user_id: Uuid) -> Result<String, DomainError>;
+}
+
+/// The other half of `TokenIssuer`: turn a bearer token back into the user id
+/// it was issued for (or reject it). Used by the auth middleware.
+pub trait TokenVerifier: Send + Sync {
+    fn verify(&self, token: &str) -> Result<Uuid, DomainError>;
+}
+
+#[async_trait]
+pub trait EventRepository: Send + Sync {
+    async fn save(&self, event: &Event) -> Result<(), DomainError>;
+    async fn find(&self, id: Uuid) -> Result<Option<Event>, DomainError>;
+    async fn list_by_owner(&self, owner_id: Uuid) -> Result<Vec<Event>, DomainError>;
+}
+
+#[async_trait]
+pub trait GuestRepository: Send + Sync {
+    async fn save(&self, guest: &Guest) -> Result<(), DomainError>;
+    async fn find(&self, id: Uuid) -> Result<Option<Guest>, DomainError>;
+    async fn find_by_token(&self, token: &str) -> Result<Option<Guest>, DomainError>;
+    async fn list_by_event(&self, event_id: Uuid) -> Result<Vec<Guest>, DomainError>;
+    /// Persist an RSVP change (status / party size / responded_at).
+    async fn update_rsvp(&self, guest: &Guest) -> Result<(), DomainError>;
+}
+
+/// Renders a printable invitation PDF for a specific guest of an event.
+pub trait InvitePdfRenderer: Send + Sync {
+    fn render(&self, event: &Event, guest: &Guest) -> Result<Vec<u8>, DomainError>;
+}
+
+/// Source of "now" — injected so RSVP-deadline logic and timestamps are
+/// deterministic in tests.
+pub trait Clock: Send + Sync {
+    fn now(&self) -> DateTime<Utc>;
+}
+
+/// Delivery seam for e-invites. Only a no-op adapter implements this today;
+/// a real WhatsApp/email/bulk sender slots in here later without touching the
+/// core.
+#[async_trait]
+pub trait InviteSender: Send + Sync {
+    async fn send(&self, guest: &Guest, invite_url: &str) -> Result<(), DomainError>;
 }

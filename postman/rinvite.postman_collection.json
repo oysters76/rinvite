@@ -1,0 +1,380 @@
+{
+  "info": {
+    "name": "rinvite — Wedding Invitation API",
+    "description": "End-to-end collection for the rinvite auth + wedding-invitation service.\n\nRun the requests top-to-bottom: the test scripts capture the JWT, event id, guest id, and invite token into collection variables so later requests chain automatically.\n\nPrereqs:\n- Server running on {{baseUrl}} (default http://localhost:3000).\n- Server started with JWT_SECRET set (>=32 bytes).\n- Use future dates for event_date / rsvp_by so RSVP stays open.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "email", "value": "host@example.com" },
+    { "key": "password", "value": "hunter2!" },
+    { "key": "authToken", "value": "" },
+    { "key": "eventId", "value": "" },
+    { "key": "guestId", "value": "" },
+    { "key": "inviteToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/signup", "host": ["{{baseUrl}}"], "path": ["auth", "signup"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const t = pm.response.json().token;",
+                  "pm.collectionVariables.set('authToken', t);",
+                  "pm.test('got a token', () => pm.expect(t).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('authToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Event — no auth (expect 401)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/events", "host": ["{{baseUrl}}"], "path": ["events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bride_name\": \"x\", \"bride_family_name\": \"x\",\n  \"groom_name\": \"x\", \"groom_family_name\": \"x\",\n  \"event_date\": \"2026-12-31\", \"start_time\": \"16:00:00\", \"end_time\": \"22:00:00\",\n  \"hall_name\": \"x\", \"venue_name\": \"x\", \"rsvp_by\": \"2026-12-01\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('401 without a bearer token', () => pm.response.to.have.status(401));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Events (owner, authenticated)",
+      "item": [
+        {
+          "name": "Create Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/events", "host": ["{{baseUrl}}"], "path": ["events"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bride_name\": \"Amara\",\n  \"bride_family_name\": \"Perera\",\n  \"groom_name\": \"Nuwan\",\n  \"groom_family_name\": \"Silva\",\n  \"event_date\": \"2026-12-31\",\n  \"start_time\": \"16:00:00\",\n  \"end_time\": \"22:00:00\",\n  \"hall_name\": \"The King's Ballroom\",\n  \"venue_name\": \"Peradeniya Rest House, Kandy\",\n  \"rsvp_by\": \"2026-12-01\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('eventId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Events",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{authToken}}" }],
+            "url": { "raw": "{{baseUrl}}/events", "host": ["{{baseUrl}}"], "path": ["events"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Event",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{authToken}}" }],
+            "url": { "raw": "{{baseUrl}}/events/{{eventId}}", "host": ["{{baseUrl}}"], "path": ["events", "{{eventId}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Guest (e-invite)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/events/{{eventId}}/guests", "host": ["{{baseUrl}}"], "path": ["events", "{{eventId}}", "guests"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ravi & Family\",\n  \"channel\": \"einvite\",\n  \"max_party_size\": 2\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const g = pm.response.json();",
+                  "pm.collectionVariables.set('guestId', g.id);",
+                  "const token = String(g.invite_url).split('/').pop();",
+                  "pm.collectionVariables.set('inviteToken', token);",
+                  "pm.test('invite_url present', () => pm.expect(g.invite_url).to.include('/invite/'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Guest (print)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/events/{{eventId}}/guests", "host": ["{{baseUrl}}"], "path": ["events", "{{eventId}}", "guests"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Aunty Kamala\",\n  \"channel\": \"print\",\n  \"max_party_size\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('201 Created', () => pm.response.to.have.status(201));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Guest — bad channel (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/events/{{eventId}}/guests", "host": ["{{baseUrl}}"], "path": ["events", "{{eventId}}", "guests"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"X\",\n  \"channel\": \"carrier-pigeon\",\n  \"max_party_size\": 1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('400 Bad Request', () => pm.response.to.have.status(400));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Guests (RSVP dashboard)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{authToken}}" }],
+            "url": { "raw": "{{baseUrl}}/events/{{eventId}}/guests", "host": ["{{baseUrl}}"], "path": ["events", "{{eventId}}", "guests"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send Invite (no-op sender)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{authToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/guests/{{guestId}}/send",
+              "host": ["{{baseUrl}}"],
+              "path": ["events", "{{eventId}}", "guests", "{{guestId}}", "send"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Download Invite PDF",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{authToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/guests/{{guestId}}/invite.pdf",
+              "host": ["{{baseUrl}}"],
+              "path": ["events", "{{eventId}}", "guests", "{{guestId}}", "invite.pdf"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('is a PDF', () => pm.expect(pm.response.headers.get('content-type')).to.include('application/pdf'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "E-invite (public, token-based)",
+      "item": [
+        {
+          "name": "View Invite Page (HTML)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/invite/{{inviteToken}}", "host": ["{{baseUrl}}"], "path": ["invite", "{{inviteToken}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('is HTML', () => pm.expect(pm.response.headers.get('content-type')).to.include('text/html'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit RSVP — attending, party 2 (expect 200)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/invite/{{inviteToken}}/rsvp", "host": ["{{baseUrl}}"], "path": ["invite", "{{inviteToken}}", "rsvp"] },
+            "body": { "mode": "raw", "raw": "{\n  \"attending\": true,\n  \"party_size\": 2\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit RSVP — over max, party 3 (expect 422)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/invite/{{inviteToken}}/rsvp", "host": ["{{baseUrl}}"], "path": ["invite", "{{inviteToken}}", "rsvp"] },
+            "body": { "mode": "raw", "raw": "{\n  \"attending\": true,\n  \"party_size\": 3\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit RSVP — declining (expect 200)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/invite/{{inviteToken}}/rsvp", "host": ["{{baseUrl}}"], "path": ["invite", "{{inviteToken}}", "rsvp"] },
+            "body": { "mode": "raw", "raw": "{\n  \"attending\": false,\n  \"party_size\": 0\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
