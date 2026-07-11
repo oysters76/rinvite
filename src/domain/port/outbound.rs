@@ -56,9 +56,12 @@ pub trait GuestRepository: Send + Sync {
     async fn update_rsvp(&self, guest: &Guest) -> Result<(), DomainError>;
 }
 
-/// Renders a printable invitation PDF for a specific guest of an event.
+/// Renders printable invitation PDFs for guests of an event.
 pub trait InvitePdfRenderer: Send + Sync {
+    /// A single-page PDF for one guest.
     fn render(&self, event: &Event, guest: &Guest) -> Result<Vec<u8>, DomainError>;
+    /// One multi-page PDF with a page per guest, in order.
+    fn render_all(&self, event: &Event, guests: &[Guest]) -> Result<Vec<u8>, DomainError>;
 }
 
 /// Source of "now" — injected so RSVP-deadline logic and timestamps are

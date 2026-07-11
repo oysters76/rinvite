@@ -5,8 +5,9 @@ use uuid::Uuid;
 
 use crate::domain::error::DomainError;
 use crate::domain::event::{Event, NewEvent};
+use crate::domain::guest::InviteChannel;
 use crate::domain::guest::{Guest, NewGuest};
-use crate::domain::port::inbound::EventService;
+use crate::domain::port::inbound::{BatchSendReport, EventService, SendResult, SendStatus};
 use crate::domain::port::outbound::{
     Clock, EventRepository, GuestRepository, InvitePdfRenderer, InviteSender,
 };
@@ -119,5 +120,198 @@ impl EventService for EventServiceImpl {
         let invite_url = format!("{}/invite/{}", self.public_base_url, guest.invite_token);
         self.sender.send(&guest, &invite_url).await?;
         Ok(invite_url)
+    }
+
+    async fn render_print_batch(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+    ) -> Result<Vec<u8>, DomainError> {
+        let event = self.owned_event(owner_id, event_id).await?;
+        let print_guests: Vec<Guest> = self
+            .guests
+            .list_by_event(event_id)
+            .await?
+            .into_iter()
+            .filter(|g| g.channel == InviteChannel::Print)
+            .collect();
+        if print_guests.is_empty() {
+            return Err(DomainError::InvalidInput(
+                "event has no print guests to render".to_owned(),
+            ));
+        }
+        self.pdf.render_all(&event, &print_guests)
+    }
+
+    async fn send_einvite_batch(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+    ) -> Result<BatchSendReport, DomainError> {
+        self.owned_event(owner_id, event_id).await?; // ownership gate
+        let einvite_guests: Vec<Guest> = self
+            .guests
+            .list_by_event(event_id)
+            .await?
+            .into_iter()
+            .filter(|g| g.channel == InviteChannel::EInvite)
+            .collect();
+
+        let mut results = Vec::with_capacity(einvite_guests.len());
+        let (mut sent, mut failed) = (0usize, 0usize);
+        // Sequential: one guest at a time, and a single failure never aborts
+        // the batch.
+        for guest in &einvite_guests {
+            let url = format!("{}/invite/{}", self.public_base_url, guest.invite_token);
+            let (status, detail) = match self.sender.send(guest, &url).await {
+                Ok(()) => {
+                    sent += 1;
+                    (SendStatus::Sent, None)
+                }
+                Err(e) => {
+                    failed += 1;
+                    (SendStatus::Failed, Some(e.to_string()))
+                }
+            };
+            results.push(SendResult {
+                guest_id: guest.id,
+                guest_name: guest.name.clone(),
+                status,
+                detail,
+            });
+        }
+
+        Ok(BatchSendReport {
+            total: einvite_guests.len(),
+            sent,
+            failed,
+            results,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
+
+    use super::*;
+    use crate::adapter::outbound::persistence::events_memory::InMemoryEventStore;
+
+    /// Records how many guests the last `render_all` batch received.
+    struct FakePdf {
+        last_batch: Mutex<usize>,
+    }
+    impl InvitePdfRenderer for FakePdf {
+        fn render(&self, _e: &Event, _g: &Guest) -> Result<Vec<u8>, DomainError> {
+            Ok(vec![1])
+        }
+        fn render_all(&self, _e: &Event, guests: &[Guest]) -> Result<Vec<u8>, DomainError> {
+            *self.last_batch.lock().unwrap() = guests.len();
+            Ok(vec![1; guests.len()])
+        }
+    }
+
+    /// Fails delivery for any guest named "boom".
+    struct FlakySender;
+    #[async_trait]
+    impl InviteSender for FlakySender {
+        async fn send(&self, guest: &Guest, _url: &str) -> Result<(), DomainError> {
+            if guest.name == "boom" {
+                Err(DomainError::Repository("smtp down".to_owned()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    struct FixedClock(DateTime<Utc>);
+    impl Clock for FixedClock {
+        fn now(&self) -> DateTime<Utc> {
+            self.0
+        }
+    }
+
+    fn sample_event() -> NewEvent {
+        NewEvent {
+            bride_name: "A".into(),
+            bride_family_name: "B".into(),
+            groom_name: "C".into(),
+            groom_family_name: "D".into(),
+            event_date: NaiveDate::from_ymd_opt(2026, 12, 31).unwrap(),
+            start_time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end_time: NaiveTime::from_hms_opt(15, 0, 0).unwrap(),
+            hall_name: "H".into(),
+            venue_name: "V".into(),
+            rsvp_by: NaiveDate::from_ymd_opt(2026, 12, 1).unwrap(),
+        }
+    }
+
+    fn guest(name: &str, channel: InviteChannel) -> NewGuest {
+        NewGuest {
+            name: name.into(),
+            channel,
+            email: None,
+            phone: None,
+            max_party_size: 2,
+        }
+    }
+
+    #[tokio::test]
+    async fn bulk_send_reports_per_guest_and_print_filters_channel() {
+        let store = Arc::new(InMemoryEventStore::new());
+        let pdf = Arc::new(FakePdf {
+            last_batch: Mutex::new(0),
+        });
+        let clock: Arc<dyn Clock> = Arc::new(FixedClock(
+            Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap(),
+        ));
+        let svc = EventServiceImpl::new(
+            store.clone(),
+            store.clone(),
+            pdf.clone(),
+            Arc::new(FlakySender),
+            clock,
+            "http://x".into(),
+        );
+
+        let owner = Uuid::new_v4();
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+        svc.add_guest(owner, ev.id, guest("ok", InviteChannel::EInvite))
+            .await
+            .unwrap();
+        svc.add_guest(owner, ev.id, guest("boom", InviteChannel::EInvite))
+            .await
+            .unwrap();
+        svc.add_guest(owner, ev.id, guest("printy", InviteChannel::Print))
+            .await
+            .unwrap();
+
+        // Bulk send touches only the two e-invite guests; one fails.
+        let report = svc.send_einvite_batch(owner, ev.id).await.unwrap();
+        assert_eq!(report.total, 2);
+        assert_eq!(report.sent, 1);
+        assert_eq!(report.failed, 1);
+        assert!(
+            report
+                .results
+                .iter()
+                .any(|r| r.guest_name == "boom" && r.status == SendStatus::Failed)
+        );
+
+        // Bulk print renders only the single print-channel guest.
+        svc.render_print_batch(owner, ev.id).await.unwrap();
+        assert_eq!(*pdf.last_batch.lock().unwrap(), 1);
+
+        // No print guests for a different (empty) event -> error.
+        let ev2 = svc.create_event(owner, sample_event()).await.unwrap();
+        assert!(svc.render_print_batch(owner, ev2.id).await.is_err());
+
+        // Ownership: a different user cannot bulk-send someone else's event.
+        assert!(matches!(
+            svc.send_einvite_batch(Uuid::new_v4(), ev.id).await,
+            Err(DomainError::NotFound(_))
+        ));
     }
 }

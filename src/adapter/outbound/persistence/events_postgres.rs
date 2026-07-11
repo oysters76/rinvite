@@ -59,6 +59,8 @@ fn row_to_guest(row: &PgRow) -> Result<Guest, DomainError> {
         event_id: row.try_get("event_id").map_err(repo_err)?,
         name: row.try_get("name").map_err(repo_err)?,
         channel: InviteChannel::parse(&channel)?,
+        email: row.try_get("email").map_err(repo_err)?,
+        phone: row.try_get("phone").map_err(repo_err)?,
         max_party_size: max_party_size as u16,
         invite_token: row.try_get("invite_token").map_err(repo_err)?,
         rsvp_status: RsvpStatus::parse(&status)?,
@@ -123,14 +125,16 @@ impl EventRepository for PostgresEventStore {
 impl GuestRepository for PostgresEventStore {
     async fn save(&self, g: &Guest) -> Result<(), DomainError> {
         sqlx::query(
-            "INSERT INTO guests (id, event_id, name, channel, max_party_size, invite_token, \
-             rsvp_status, party_size, responded_at, created_at) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+            "INSERT INTO guests (id, event_id, name, channel, email, phone, max_party_size, \
+             invite_token, rsvp_status, party_size, responded_at, created_at) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
         )
         .bind(g.id)
         .bind(g.event_id)
         .bind(&g.name)
         .bind(g.channel.as_str())
+        .bind(&g.email)
+        .bind(&g.phone)
         .bind(g.max_party_size as i32)
         .bind(&g.invite_token)
         .bind(g.rsvp_status.as_str())

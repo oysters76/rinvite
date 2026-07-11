@@ -95,13 +95,25 @@ pub fn validate_event(e: &NewEvent) -> Result<(), DomainError> {
     Ok(())
 }
 
-/// Guest policy: a name, and a party size of at least one (the guest).
+/// Guest policy: a name, a party size of at least one (the guest), and
+/// well-formed contact details when provided.
 pub fn validate_guest(g: &NewGuest) -> Result<(), DomainError> {
     non_empty("guest name", &g.name)?;
     if g.max_party_size < 1 {
         return Err(DomainError::InvalidInput(
             "max party size must be at least 1".to_owned(),
         ));
+    }
+    if let Some(email) = &g.email {
+        validate_email(email)?;
+    }
+    if let Some(phone) = &g.phone {
+        let p = phone.trim();
+        if p.is_empty() || p.len() > 32 {
+            return Err(DomainError::InvalidInput(
+                "phone must be 1–32 characters".to_owned(),
+            ));
+        }
     }
     Ok(())
 }

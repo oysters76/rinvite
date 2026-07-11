@@ -14,6 +14,7 @@ use super::{ApiError, AppState};
 use crate::domain::error::DomainError;
 use crate::domain::event::{Event, NewEvent};
 use crate::domain::guest::{Guest, InviteChannel, NewGuest};
+use crate::domain::port::inbound::BatchSendReport;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -22,6 +23,8 @@ pub fn router() -> Router<AppState> {
         .route("/events/{id}/guests", post(add_guest).get(list_guests))
         .route("/events/{id}/guests/{gid}/invite.pdf", get(invite_pdf))
         .route("/events/{id}/guests/{gid}/send", post(send_invite))
+        .route("/events/{id}/invites/print.pdf", get(print_batch))
+        .route("/events/{id}/invites/send", post(send_batch))
 }
 
 // ----- DTOs -----------------------------------------------------------------
@@ -95,6 +98,10 @@ struct CreateGuestRequest {
     name: String,
     /// "print" or "einvite".
     channel: String,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    phone: Option<String>,
     max_party_size: u16,
 }
 
@@ -115,6 +122,8 @@ struct GuestResponse {
     id: Uuid,
     name: String,
     channel: String,
+    email: Option<String>,
+    phone: Option<String>,
     max_party_size: u16,
     rsvp_status: String,
     party_size: Option<u16>,
@@ -128,6 +137,8 @@ fn guest_response(g: Guest, base_url: &str) -> GuestResponse {
         id: g.id,
         name: g.name,
         channel: g.channel.as_str().to_owned(),
+        email: g.email,
+        phone: g.phone,
         max_party_size: g.max_party_size,
         rsvp_status: g.rsvp_status.as_str().to_owned(),
         party_size: g.party_size,
@@ -172,6 +183,8 @@ async fn add_guest(
     let details = NewGuest {
         name: body.name,
         channel: parse_channel(&body.channel)?,
+        email: body.email,
+        phone: body.phone,
         max_party_size: body.max_party_size,
     };
     let guest = state.events.add_guest(owner_id, event_id, details).await?;
@@ -227,4 +240,72 @@ async fn send_invite(
         sent: true,
         invite_url,
     }))
+}
+
+// ----- Bulk endpoints -------------------------------------------------------
+
+/// One merged PDF with a card per print-channel guest.
+async fn print_batch(
+    AuthUser(owner_id): AuthUser,
+    State(state): State<AppState>,
+    Path(event_id): Path<Uuid>,
+) -> Result<Response, ApiError> {
+    let bytes = state.events.render_print_batch(owner_id, event_id).await?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/pdf"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"invitations.pdf\"",
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+#[derive(Serialize)]
+struct SendResultDto {
+    guest_id: Uuid,
+    guest_name: String,
+    status: String,
+    detail: Option<String>,
+}
+
+#[derive(Serialize)]
+struct BatchReportDto {
+    total: usize,
+    sent: usize,
+    failed: usize,
+    results: Vec<SendResultDto>,
+}
+
+impl From<BatchSendReport> for BatchReportDto {
+    fn from(r: BatchSendReport) -> Self {
+        Self {
+            total: r.total,
+            sent: r.sent,
+            failed: r.failed,
+            results: r
+                .results
+                .into_iter()
+                .map(|s| SendResultDto {
+                    guest_id: s.guest_id,
+                    guest_name: s.guest_name,
+                    status: s.status.as_str().to_owned(),
+                    detail: s.detail,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Sequentially deliver every e-invite guest's link; report per-guest results.
+async fn send_batch(
+    AuthUser(owner_id): AuthUser,
+    State(state): State<AppState>,
+    Path(event_id): Path<Uuid>,
+) -> Result<Json<BatchReportDto>, ApiError> {
+    let report = state.events.send_einvite_batch(owner_id, event_id).await?;
+    Ok(Json(report.into()))
 }

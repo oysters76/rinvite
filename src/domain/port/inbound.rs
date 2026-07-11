@@ -50,6 +50,55 @@ pub trait EventService: Send + Sync {
         event_id: Uuid,
         guest_id: Uuid,
     ) -> Result<String, DomainError>;
+
+    /// Bulk: one multi-page PDF with a card per print-channel guest.
+    async fn render_print_batch(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+    ) -> Result<Vec<u8>, DomainError>;
+
+    /// Bulk: deliver every e-invite-channel guest's link sequentially, and
+    /// report per-guest success/failure.
+    async fn send_einvite_batch(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+    ) -> Result<BatchSendReport, DomainError>;
+}
+
+/// Outcome of one guest's delivery in a bulk send.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendStatus {
+    Sent,
+    Failed,
+}
+
+impl SendStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SendStatus::Sent => "sent",
+            SendStatus::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SendResult {
+    pub guest_id: Uuid,
+    pub guest_name: String,
+    pub status: SendStatus,
+    /// Error detail when `status` is `Failed`.
+    pub detail: Option<String>,
+}
+
+/// Summary of a bulk e-invite send.
+#[derive(Debug, Clone)]
+pub struct BatchSendReport {
+    pub total: usize,
+    pub sent: usize,
+    pub failed: usize,
+    pub results: Vec<SendResult>,
 }
 
 /// What the public e-invite page needs to render itself.

@@ -67,6 +67,9 @@ pub struct Guest {
     pub event_id: Uuid,
     pub name: String,
     pub channel: InviteChannel,
+    /// Optional contact details — where a real sender delivers the e-invite.
+    pub email: Option<String>,
+    pub phone: Option<String>,
     /// Maximum total headcount for this guest's party, *including* the guest
     /// themselves (e.g. 2 = the guest plus one companion).
     pub max_party_size: u16,
@@ -84,6 +87,8 @@ pub struct Guest {
 pub struct NewGuest {
     pub name: String,
     pub channel: InviteChannel,
+    pub email: Option<String>,
+    pub phone: Option<String>,
     pub max_party_size: u16,
 }
 
@@ -95,6 +100,8 @@ impl Guest {
             event_id,
             name: details.name,
             channel: details.channel,
+            email: details.email,
+            phone: details.phone,
             max_party_size: details.max_party_size,
             // Two v4 UUIDs give ~244 bits of entropy — plenty to keep the
             // invite link unguessable.
@@ -148,6 +155,8 @@ mod tests {
             NewGuest {
                 name: "Ravi".to_owned(),
                 channel: InviteChannel::EInvite,
+                email: None,
+                phone: None,
                 max_party_size: max,
             },
             now,

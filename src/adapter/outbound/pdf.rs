@@ -149,55 +149,63 @@ impl TemplatePdfRenderer {
 
 impl InvitePdfRenderer for TemplatePdfRenderer {
     fn render(&self, event: &Event, guest: &Guest) -> Result<Vec<u8>, DomainError> {
+        self.render_all(event, std::slice::from_ref(guest))
+    }
+
+    fn render_all(&self, event: &Event, guests: &[Guest]) -> Result<Vec<u8>, DomainError> {
         match &self.config {
-            Some(cfg) => render_from_config(cfg, event, guest),
-            None => render_plain(event, guest),
+            Some(cfg) => render_all_from_config(cfg, event, guests),
+            None => render_all_plain(event, guests),
         }
     }
 }
 
-fn render_from_config(
-    cfg: &LoadedConfig,
-    event: &Event,
-    guest: &Guest,
-) -> Result<Vec<u8>, DomainError> {
-    // Page sized to the template image at the configured dpi.
+/// Page geometry derived once from the template + optional fixed page size,
+/// shared across every page of a batch.
+struct PageGeom {
+    page_w: f32,
+    page_h: f32,
+    sx: f32,
+    sy: f32,
+    rgb: image_crate::DynamicImage,
+}
+
+fn page_geom(cfg: &LoadedConfig) -> Result<PageGeom, DomainError> {
     let dynamic = image_crate::load_from_memory(&cfg.template_png)
         .map_err(|e| DomainError::Pdf(format!("cannot decode template image: {e}")))?;
     let px_to_mm = 25.4 / cfg.dpi;
-    // Natural size of the template at the given dpi.
     let natural_w = dynamic.width() as f32 * px_to_mm;
     let natural_h = dynamic.height() as f32 * px_to_mm;
-    // Target page: an explicit fixed size (e.g. A5) or the template's natural
-    // size. Scale factors map the template — and every text anchor — onto it.
     let (page_w, page_h) = match cfg.page_mm {
         Some([w, h]) => (w, h),
         None => (natural_w, natural_h),
     };
-    let sx = page_w / natural_w;
-    let sy = page_h / natural_h;
-
-    let (doc, page, layer) =
-        PdfDocument::new("Wedding Invitation", Mm(page_w), Mm(page_h), "Invitation");
-    let layer: PdfLayerReference = doc.get_page(page).get_layer(layer);
-
     // Flatten to RGB — printpdf 0.7 renders a PNG alpha channel as transparency,
     // which would hide the whole card.
     let rgb = image_crate::DynamicImage::ImageRgb8(dynamic.to_rgb8());
-    // Background template, scaled to fill the page.
-    Image::from_dynamic_image(&rgb).add_to_layer(
-        layer.clone(),
-        ImageTransform {
-            translate_x: Some(Mm(0.0)),
-            translate_y: Some(Mm(0.0)),
-            scale_x: Some(sx),
-            scale_y: Some(sy),
-            dpi: Some(cfg.dpi),
-            ..Default::default()
-        },
+    Ok(PageGeom {
+        page_w,
+        page_h,
+        sx: page_w / natural_w,
+        sy: page_h / natural_h,
+        rgb,
+    })
+}
+
+fn render_all_from_config(
+    cfg: &LoadedConfig,
+    event: &Event,
+    guests: &[Guest],
+) -> Result<Vec<u8>, DomainError> {
+    let geom = page_geom(cfg)?;
+    let (doc, page1, layer1) = PdfDocument::new(
+        "Wedding Invitation",
+        Mm(geom.page_w),
+        Mm(geom.page_h),
+        "Invitation",
     );
 
-    // Add each configured font to the doc once, keyed by name.
+    // Fonts are document-level: add them once and reuse across every page.
     let mut refs: HashMap<&str, IndirectFontRef> = HashMap::new();
     for (name, asset) in &cfg.fonts {
         let font = doc
@@ -206,8 +214,43 @@ fn render_from_config(
         refs.insert(name.as_str(), font);
     }
 
-    let tokens = resolve_tokens(event, guest);
+    for (i, guest) in guests.iter().enumerate() {
+        let layer = if i == 0 {
+            doc.get_page(page1).get_layer(layer1)
+        } else {
+            let (p, l) = doc.add_page(Mm(geom.page_w), Mm(geom.page_h), "Invitation");
+            doc.get_page(p).get_layer(l)
+        };
+        draw_config_page(&layer, cfg, &geom, &refs, event, guest)?;
+    }
 
+    doc.save_to_bytes()
+        .map_err(|e| DomainError::Pdf(format!("cannot serialize PDF: {e}")))
+}
+
+/// Draw one guest's card (background + positioned text) onto a page's layer.
+fn draw_config_page(
+    layer: &PdfLayerReference,
+    cfg: &LoadedConfig,
+    geom: &PageGeom,
+    refs: &HashMap<&str, IndirectFontRef>,
+    event: &Event,
+    guest: &Guest,
+) -> Result<(), DomainError> {
+    // Background template, scaled to fill the page.
+    Image::from_dynamic_image(&geom.rgb).add_to_layer(
+        layer.clone(),
+        ImageTransform {
+            translate_x: Some(Mm(0.0)),
+            translate_y: Some(Mm(0.0)),
+            scale_x: Some(geom.sx),
+            scale_y: Some(geom.sy),
+            dpi: Some(cfg.dpi),
+            ..Default::default()
+        },
+    );
+
+    let tokens = resolve_tokens(event, guest);
     for el in &cfg.elements {
         let asset = cfg
             .fonts
@@ -229,19 +272,19 @@ fn render_from_config(
 
         // Anchor scales with the page; font size and measured text width do not
         // (text isn't part of the stretched image).
-        let x_anchor = el.x_mm * sx;
-        let y_anchor = el.y_mm * sy;
+        let x_anchor = el.x_mm * geom.sx;
+        let y_anchor = el.y_mm * geom.sy;
 
         if el.letter_spacing > 0.0 {
             draw_spaced(
-                &layer,
+                layer,
                 &text,
                 el,
                 asset,
                 font,
                 x_anchor,
                 y_anchor,
-                el.letter_spacing * sx,
+                el.letter_spacing * geom.sx,
             );
         } else {
             let width = text_width_mm(&text, asset, el.size);
@@ -249,9 +292,7 @@ fn render_from_config(
             layer.use_text(&text, el.size, Mm(x), Mm(y_anchor), font);
         }
     }
-
-    doc.save_to_bytes()
-        .map_err(|e| DomainError::Pdf(format!("cannot serialize PDF: {e}")))
+    Ok(())
 }
 
 /// Draw text glyph-by-glyph, inserting `spacing` mm between characters.
@@ -278,33 +319,41 @@ fn draw_spaced(
     }
 }
 
-/// Zero-config fallback: a plain A5 page with the builtin Times font.
-fn render_plain(event: &Event, guest: &Guest) -> Result<Vec<u8>, DomainError> {
-    let (doc, page, layer) = PdfDocument::new(
+/// Zero-config fallback: plain A5 pages with the builtin Times font, one per
+/// guest.
+fn render_all_plain(event: &Event, guests: &[Guest]) -> Result<Vec<u8>, DomainError> {
+    let (doc, page1, layer1) = PdfDocument::new(
         "Wedding Invitation",
         Mm(DEFAULT_W_MM),
         Mm(DEFAULT_H_MM),
         "Invitation",
     );
-    let layer = doc.get_page(page).get_layer(layer);
     let font = doc
         .add_builtin_font(BuiltinFont::TimesRoman)
         .map_err(|e| DomainError::Pdf(format!("cannot load builtin font: {e}")))?;
 
-    let tokens = resolve_tokens(event, guest);
-    let lines = [
-        ("{bride_name} & {groom_name}", 28.0, 185.0),
-        ("{guest_name}", 18.0, 165.0),
-        ("{event_date_full}", 14.0, 145.0),
-        ("From {start_time} to {end_time}", 14.0, 133.0),
-        ("{hall_name}", 14.0, 118.0),
-        ("{venue_name}", 12.0, 108.0),
-        ("Admits up to {max_party_size}", 12.0, 90.0),
-        ("RSVP by {rsvp_by}", 12.0, 75.0),
-    ];
-    for (tpl, size, y) in lines {
-        let text = substitute(tpl, &tokens);
-        layer.use_text(&text, size, Mm(20.0), Mm(y), &font);
+    for (i, guest) in guests.iter().enumerate() {
+        let layer = if i == 0 {
+            doc.get_page(page1).get_layer(layer1)
+        } else {
+            let (p, l) = doc.add_page(Mm(DEFAULT_W_MM), Mm(DEFAULT_H_MM), "Invitation");
+            doc.get_page(p).get_layer(l)
+        };
+        let tokens = resolve_tokens(event, guest);
+        let lines = [
+            ("{bride_name} & {groom_name}", 28.0, 185.0),
+            ("{guest_name}", 18.0, 165.0),
+            ("{event_date_full}", 14.0, 145.0),
+            ("From {start_time} to {end_time}", 14.0, 133.0),
+            ("{hall_name}", 14.0, 118.0),
+            ("{venue_name}", 12.0, 108.0),
+            ("Admits up to {max_party_size}", 12.0, 90.0),
+            ("RSVP by {rsvp_by}", 12.0, 75.0),
+        ];
+        for (tpl, size, y) in lines {
+            let text = substitute(tpl, &tokens);
+            layer.use_text(&text, size, Mm(20.0), Mm(y), &font);
+        }
     }
     doc.save_to_bytes()
         .map_err(|e| DomainError::Pdf(format!("cannot serialize PDF: {e}")))
