@@ -1,0 +1,36 @@
+{
+  "template_image": "assets/templates/floral-gold.png",
+  "dpi": 300,
+  "page_mm": [148, 210],
+  "fonts": {
+    "serif": "assets/fonts/EBGaramond-Regular.ttf",
+    "serif_italic": "assets/fonts/EBGaramond-Italic.ttf",
+    "script": "assets/fonts/GreatVibes-Regular.ttf",
+    "caps": "assets/fonts/Cinzel-Variable.ttf"
+  },
+  "elements": [
+    { "template": "Mr. & Mrs. {bride_family_name}", "font": "serif", "size": 22, "x_mm": 75.85, "y_mm": 153, "align": "center", "color": [0.20, 0.15, 0.10] },
+    { "template": "Together with", "font": "script", "size": 20, "x_mm": 75.85, "y_mm": 145, "align": "center", "color": [0.72, 0.56, 0.22] },
+    { "template": "Mr. & Mrs. {groom_family_name}", "font": "serif", "size": 22, "x_mm": 75.85, "y_mm": 138, "align": "center", "color": [0.20, 0.15, 0.10] },
+
+    { "template": "Request the honour of the presence of", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 129, "align": "center", "color": [0.25, 0.20, 0.14] },
+    { "template": "{guest_name}", "font": "script", "size": 24, "x_mm": 75.85, "y_mm": 121, "align": "center", "color": [0.72, 0.56, 0.22] },
+    { "template": "to celebrate the marriage of their beloved children", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 113, "align": "center", "color": [0.25, 0.20, 0.14] },
+
+    { "template": "{bride_name}", "font": "script", "size": 40, "x_mm": 75.85, "y_mm": 103, "align": "center", "color": [0.72, 0.56, 0.22] },
+    { "template": "&", "font": "script", "size": 24, "x_mm": 75.85, "y_mm": 96, "align": "center", "color": [0.72, 0.56, 0.22] },
+    { "template": "{groom_name}", "font": "script", "size": 40, "x_mm": 75.85, "y_mm": 89, "align": "center", "color": [0.72, 0.56, 0.22] },
+
+    { "template": "{day_name}", "font": "caps", "size": 13, "x_mm": 55, "y_mm": 79, "align": "right", "transform": "upper", "letter_spacing": 1.2, "color": [0.20, 0.15, 0.10] },
+    { "template": "{day}", "font": "serif", "size": 30, "x_mm": 75.85, "y_mm": 77, "align": "center", "color": [0.60, 0.46, 0.16] },
+    { "template": "{month}", "font": "caps", "size": 13, "x_mm": 97, "y_mm": 79, "align": "left", "transform": "upper", "letter_spacing": 1.2, "color": [0.20, 0.15, 0.10] },
+    { "template": "{year}", "font": "serif", "size": 15, "x_mm": 75.85, "y_mm": 66, "align": "center", "color": [0.60, 0.46, 0.16] },
+
+    { "template": "From {start_time} to {end_time}", "font": "serif", "size": 10.5, "x_mm": 75.85, "y_mm": 56.5, "align": "center", "color": [0.30, 0.22, 0.10] },
+
+    { "template": "At {hall_name}", "font": "serif_italic", "size": 16, "x_mm": 75.85, "y_mm": 46, "align": "center", "color": [0.20, 0.15, 0.10] },
+    { "template": "{venue_name}", "font": "serif_italic", "size": 13, "x_mm": 75.85, "y_mm": 40, "align": "center", "color": [0.20, 0.15, 0.10] },
+
+    { "template": "RSVP by {rsvp_by}", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 26, "align": "center", "color": [0.60, 0.46, 0.16] }
+  ]
+}
