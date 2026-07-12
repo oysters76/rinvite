@@ -4,10 +4,11 @@ use std::time::Duration;
 use axum::{
     Json, Router,
     extract::DefaultBodyLimit,
-    http::StatusCode,
+    http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde::Serialize;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 
 use crate::domain::error::DomainError;
@@ -46,12 +47,41 @@ pub fn routes(state: AppState) -> Router {
         .merge(auth::router())
         .merge(events::router())
         .merge(invites::router())
+        .layer(cors_layer_from_env())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::SERVICE_UNAVAILABLE,
             REQUEST_TIMEOUT,
         ))
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .with_state(state)
+}
+
+/// CORS for browser SPAs. `CORS_ALLOWED_ORIGINS` (comma-separated) restricts to
+/// an allowlist; unset means allow any origin — safe here because auth is
+/// Bearer-token based (no cookies/credentials).
+fn cors_layer_from_env() -> CorsLayer {
+    let origins = match std::env::var("CORS_ALLOWED_ORIGINS") {
+        Ok(raw) => {
+            let list: Vec<_> = raw
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            AllowOrigin::list(list)
+        }
+        Err(_) => AllowOrigin::any(),
+    };
+    CorsLayer::new()
+        .allow_origin(origins)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
 }
 
 // ----- Error mapping: the ONE place that maps DomainError -> HTTP status -----

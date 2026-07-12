@@ -92,6 +92,18 @@ pub struct NewGuest {
     pub max_party_size: u16,
 }
 
+/// Partial update for a guest — only the `Some` fields are changed. Contact
+/// fields use `Option<Option<String>>`: outer `None` = leave unchanged, inner
+/// `None` = clear it.
+#[derive(Debug, Clone, Default)]
+pub struct GuestUpdate {
+    pub name: Option<String>,
+    pub channel: Option<InviteChannel>,
+    pub email: Option<Option<String>>,
+    pub phone: Option<Option<String>>,
+    pub max_party_size: Option<u16>,
+}
+
 impl Guest {
     /// Build a new guest with a fresh id and invite token, RSVP still pending.
     pub fn new(event_id: Uuid, details: NewGuest, now: DateTime<Utc>) -> Self {
@@ -110,6 +122,36 @@ impl Guest {
             party_size: None,
             responded_at: None,
             created_at: now,
+        }
+    }
+
+    /// Apply the `Some` fields of a partial update in place.
+    pub fn apply_update(&mut self, u: GuestUpdate) {
+        if let Some(v) = u.name {
+            self.name = v;
+        }
+        if let Some(v) = u.channel {
+            self.channel = v;
+        }
+        if let Some(v) = u.email {
+            self.email = v;
+        }
+        if let Some(v) = u.phone {
+            self.phone = v;
+        }
+        if let Some(v) = u.max_party_size {
+            self.max_party_size = v;
+        }
+    }
+
+    /// A `NewGuest` view of the current field values, for re-validation.
+    pub fn as_new(&self) -> NewGuest {
+        NewGuest {
+            name: self.name.clone(),
+            channel: self.channel,
+            email: self.email.clone(),
+            phone: self.phone.clone(),
+            max_party_size: self.max_party_size,
         }
     }
 

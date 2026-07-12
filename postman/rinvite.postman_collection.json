@@ -68,6 +68,26 @@
           ]
         },
         {
+          "name": "Get Current User (GET /auth/me)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{authToken}}" }],
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('returns id + email', () => { const u = pm.response.json(); pm.expect(u).to.have.property('id'); pm.expect(u).to.have.property('email'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Create Event — no auth (expect 401)",
           "request": {
             "method": "POST",
@@ -150,6 +170,30 @@
               "script": {
                 "type": "text/javascript",
                 "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Event (PATCH, partial)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/events/{{eventId}}", "host": ["{{baseUrl}}"], "path": ["events", "{{eventId}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"venue_name\": \"Galle Face Hotel, Colombo\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('field updated', () => pm.expect(pm.response.json().venue_name).to.include('Galle Face'));"
+                ]
               }
             }
           ]
@@ -251,6 +295,55 @@
           ]
         },
         {
+          "name": "Get Guest (single)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{authToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/guests/{{guestId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["events", "{{eventId}}", "guests", "{{guestId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Guest (PATCH, partial)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/guests/{{guestId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["events", "{{eventId}}", "guests", "{{guestId}}"]
+            },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"updated@example.com\",\n  \"max_party_size\": 4\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('fields updated', () => { const g = pm.response.json(); pm.expect(g.email).to.eql('updated@example.com'); pm.expect(g.max_party_size).to.eql(4); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Send Invite (no-op sender)",
           "request": {
             "method": "POST",
@@ -291,6 +384,44 @@
                   "pm.test('200 OK', () => pm.response.to.have.status(200));",
                   "pm.test('is a PDF', () => pm.expect(pm.response.headers.get('content-type')).to.include('application/pdf'));"
                 ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Guest (204) — run last",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{authToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/guests/{{guestId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["events", "{{eventId}}", "guests", "{{guestId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('204 No Content', () => pm.response.to.have.status(204));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Event (204) — run last",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{authToken}}" }],
+            "url": { "raw": "{{baseUrl}}/events/{{eventId}}", "host": ["{{baseUrl}}"], "path": ["events", "{{eventId}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('204 No Content', () => pm.response.to.have.status(204));"]
               }
             }
           ]

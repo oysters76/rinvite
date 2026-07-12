@@ -48,6 +48,18 @@ impl EventRepository for InMemoryEventStore {
         events.sort_by_key(|e| std::cmp::Reverse(e.created_at));
         Ok(events)
     }
+
+    async fn update(&self, event: &Event) -> Result<(), DomainError> {
+        self.events.write().await.insert(event.id, event.clone());
+        Ok(())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<(), DomainError> {
+        self.events.write().await.remove(&id);
+        // Mirror the DB's ON DELETE CASCADE: drop this event's guests too.
+        self.guests.write().await.retain(|_, g| g.event_id != id);
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -86,6 +98,16 @@ impl GuestRepository for InMemoryEventStore {
 
     async fn update_rsvp(&self, guest: &Guest) -> Result<(), DomainError> {
         self.guests.write().await.insert(guest.id, guest.clone());
+        Ok(())
+    }
+
+    async fn update(&self, guest: &Guest) -> Result<(), DomainError> {
+        self.guests.write().await.insert(guest.id, guest.clone());
+        Ok(())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<(), DomainError> {
+        self.guests.write().await.remove(&id);
         Ok(())
     }
 }

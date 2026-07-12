@@ -119,6 +119,39 @@ impl EventRepository for PostgresEventStore {
             .map_err(repo_err)?;
         rows.iter().map(row_to_event).collect()
     }
+
+    async fn update(&self, e: &Event) -> Result<(), DomainError> {
+        sqlx::query(
+            "UPDATE events SET bride_name=$2, bride_family_name=$3, groom_name=$4, \
+             groom_family_name=$5, event_date=$6, start_time=$7, end_time=$8, hall_name=$9, \
+             venue_name=$10, rsvp_by=$11 WHERE id=$1",
+        )
+        .bind(e.id)
+        .bind(&e.bride_name)
+        .bind(&e.bride_family_name)
+        .bind(&e.groom_name)
+        .bind(&e.groom_family_name)
+        .bind(e.event_date)
+        .bind(e.start_time)
+        .bind(e.end_time)
+        .bind(&e.hall_name)
+        .bind(&e.venue_name)
+        .bind(e.rsvp_by)
+        .execute(&self.pool)
+        .await
+        .map_err(repo_err)?;
+        Ok(())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<(), DomainError> {
+        // guests.event_id has ON DELETE CASCADE, so its guests go with it.
+        sqlx::query("DELETE FROM events WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(repo_err)?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -185,6 +218,32 @@ impl GuestRepository for PostgresEventStore {
         .execute(&self.pool)
         .await
         .map_err(repo_err)?;
+        Ok(())
+    }
+
+    async fn update(&self, g: &Guest) -> Result<(), DomainError> {
+        sqlx::query(
+            "UPDATE guests SET name=$2, channel=$3, email=$4, phone=$5, max_party_size=$6 \
+             WHERE id=$1",
+        )
+        .bind(g.id)
+        .bind(&g.name)
+        .bind(g.channel.as_str())
+        .bind(&g.email)
+        .bind(&g.phone)
+        .bind(g.max_party_size as i32)
+        .execute(&self.pool)
+        .await
+        .map_err(repo_err)?;
+        Ok(())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<(), DomainError> {
+        sqlx::query("DELETE FROM guests WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(repo_err)?;
         Ok(())
     }
 }

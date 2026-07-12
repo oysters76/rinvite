@@ -12,15 +12,22 @@ use uuid::Uuid;
 use super::auth_extractor::AuthUser;
 use super::{ApiError, AppState};
 use crate::domain::error::DomainError;
-use crate::domain::event::{Event, NewEvent};
-use crate::domain::guest::{Guest, InviteChannel, NewGuest};
+use crate::domain::event::{Event, EventUpdate, NewEvent};
+use crate::domain::guest::{Guest, GuestUpdate, InviteChannel, NewGuest};
 use crate::domain::port::inbound::BatchSendReport;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/events", post(create_event).get(list_events))
-        .route("/events/{id}", get(get_event))
+        .route(
+            "/events/{id}",
+            get(get_event).patch(update_event).delete(delete_event),
+        )
         .route("/events/{id}/guests", post(add_guest).get(list_guests))
+        .route(
+            "/events/{id}/guests/{gid}",
+            get(get_guest).patch(update_guest).delete(delete_guest),
+        )
         .route("/events/{id}/guests/{gid}/invite.pdf", get(invite_pdf))
         .route("/events/{id}/guests/{gid}/send", post(send_invite))
         .route("/events/{id}/invites/print.pdf", get(print_batch))
@@ -174,6 +181,60 @@ async fn get_event(
     Ok(Json(EventResponse::from(event)))
 }
 
+/// Partial event update — only the fields present are changed.
+#[derive(Deserialize)]
+struct UpdateEventRequest {
+    bride_name: Option<String>,
+    bride_family_name: Option<String>,
+    groom_name: Option<String>,
+    groom_family_name: Option<String>,
+    event_date: Option<NaiveDate>,
+    start_time: Option<NaiveTime>,
+    end_time: Option<NaiveTime>,
+    hall_name: Option<String>,
+    venue_name: Option<String>,
+    rsvp_by: Option<NaiveDate>,
+}
+
+impl From<UpdateEventRequest> for EventUpdate {
+    fn from(r: UpdateEventRequest) -> Self {
+        EventUpdate {
+            bride_name: r.bride_name,
+            bride_family_name: r.bride_family_name,
+            groom_name: r.groom_name,
+            groom_family_name: r.groom_family_name,
+            event_date: r.event_date,
+            start_time: r.start_time,
+            end_time: r.end_time,
+            hall_name: r.hall_name,
+            venue_name: r.venue_name,
+            rsvp_by: r.rsvp_by,
+        }
+    }
+}
+
+async fn update_event(
+    AuthUser(owner_id): AuthUser,
+    State(state): State<AppState>,
+    Path(event_id): Path<Uuid>,
+    Json(body): Json<UpdateEventRequest>,
+) -> Result<Json<EventResponse>, ApiError> {
+    let event = state
+        .events
+        .update_event(owner_id, event_id, body.into())
+        .await?;
+    Ok(Json(EventResponse::from(event)))
+}
+
+async fn delete_event(
+    AuthUser(owner_id): AuthUser,
+    State(state): State<AppState>,
+    Path(event_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    state.events.delete_event(owner_id, event_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn add_guest(
     AuthUser(owner_id): AuthUser,
     State(state): State<AppState>,
@@ -207,6 +268,58 @@ async fn list_guests(
             .map(|g| guest_response(g, &state.public_base_url))
             .collect(),
     ))
+}
+
+async fn get_guest(
+    AuthUser(owner_id): AuthUser,
+    State(state): State<AppState>,
+    Path((event_id, guest_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<GuestResponse>, ApiError> {
+    let guest = state.events.get_guest(owner_id, event_id, guest_id).await?;
+    Ok(Json(guest_response(guest, &state.public_base_url)))
+}
+
+/// Partial guest update — only the fields present are changed. Contact fields
+/// present with a value set it; absent leaves it unchanged.
+#[derive(Deserialize)]
+struct UpdateGuestRequest {
+    name: Option<String>,
+    channel: Option<String>,
+    email: Option<String>,
+    phone: Option<String>,
+    max_party_size: Option<u16>,
+}
+
+async fn update_guest(
+    AuthUser(owner_id): AuthUser,
+    State(state): State<AppState>,
+    Path((event_id, guest_id)): Path<(Uuid, Uuid)>,
+    Json(body): Json<UpdateGuestRequest>,
+) -> Result<Json<GuestResponse>, ApiError> {
+    let update = GuestUpdate {
+        name: body.name,
+        channel: body.channel.map(|c| parse_channel(&c)).transpose()?,
+        email: body.email.map(Some),
+        phone: body.phone.map(Some),
+        max_party_size: body.max_party_size,
+    };
+    let guest = state
+        .events
+        .update_guest(owner_id, event_id, guest_id, update)
+        .await?;
+    Ok(Json(guest_response(guest, &state.public_base_url)))
+}
+
+async fn delete_guest(
+    AuthUser(owner_id): AuthUser,
+    State(state): State<AppState>,
+    Path((event_id, guest_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .events
+        .delete_guest(owner_id, event_id, guest_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn invite_pdf(

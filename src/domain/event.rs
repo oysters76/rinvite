@@ -38,6 +38,21 @@ pub struct NewEvent {
     pub rsvp_by: NaiveDate,
 }
 
+/// Partial update for an event — only the `Some` fields are changed.
+#[derive(Debug, Clone, Default)]
+pub struct EventUpdate {
+    pub bride_name: Option<String>,
+    pub bride_family_name: Option<String>,
+    pub groom_name: Option<String>,
+    pub groom_family_name: Option<String>,
+    pub event_date: Option<NaiveDate>,
+    pub start_time: Option<NaiveTime>,
+    pub end_time: Option<NaiveTime>,
+    pub hall_name: Option<String>,
+    pub venue_name: Option<String>,
+    pub rsvp_by: Option<NaiveDate>,
+}
+
 impl Event {
     /// Build a new event with a fresh id for the given owner.
     pub fn new(owner_id: Uuid, details: NewEvent, now: DateTime<Utc>) -> Self {
@@ -55,6 +70,56 @@ impl Event {
             venue_name: details.venue_name,
             rsvp_by: details.rsvp_by,
             created_at: now,
+        }
+    }
+
+    /// Apply the `Some` fields of a partial update in place.
+    pub fn apply_update(&mut self, u: EventUpdate) {
+        if let Some(v) = u.bride_name {
+            self.bride_name = v;
+        }
+        if let Some(v) = u.bride_family_name {
+            self.bride_family_name = v;
+        }
+        if let Some(v) = u.groom_name {
+            self.groom_name = v;
+        }
+        if let Some(v) = u.groom_family_name {
+            self.groom_family_name = v;
+        }
+        if let Some(v) = u.event_date {
+            self.event_date = v;
+        }
+        if let Some(v) = u.start_time {
+            self.start_time = v;
+        }
+        if let Some(v) = u.end_time {
+            self.end_time = v;
+        }
+        if let Some(v) = u.hall_name {
+            self.hall_name = v;
+        }
+        if let Some(v) = u.venue_name {
+            self.venue_name = v;
+        }
+        if let Some(v) = u.rsvp_by {
+            self.rsvp_by = v;
+        }
+    }
+
+    /// A `NewEvent` view of the current field values, for re-validation.
+    pub fn as_new(&self) -> NewEvent {
+        NewEvent {
+            bride_name: self.bride_name.clone(),
+            bride_family_name: self.bride_family_name.clone(),
+            groom_name: self.groom_name.clone(),
+            groom_family_name: self.groom_family_name.clone(),
+            event_date: self.event_date,
+            start_time: self.start_time,
+            end_time: self.end_time,
+            hall_name: self.hall_name.clone(),
+            venue_name: self.venue_name.clone(),
+            rsvp_by: self.rsvp_by,
         }
     }
 }

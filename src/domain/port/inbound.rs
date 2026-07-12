@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use super::super::error::DomainError;
-use super::super::event::{Event, NewEvent};
-use super::super::guest::{Guest, NewGuest, RsvpStatus};
+use super::super::event::{Event, EventUpdate, NewEvent};
+use super::super::guest::{Guest, GuestUpdate, NewGuest, RsvpStatus};
+use super::super::model::User;
 
 /// Returned to a client after a successful signup/login.
 #[derive(Debug, Clone)]
@@ -19,6 +20,8 @@ pub struct AuthToken {
 pub trait AuthService: Send + Sync {
     async fn signup(&self, email: &str, password: &str) -> Result<AuthToken, DomainError>;
     async fn login(&self, email: &str, password: &str) -> Result<AuthToken, DomainError>;
+    /// The authenticated user's own record (for a "current user" endpoint).
+    async fn me(&self, user_id: Uuid) -> Result<User, DomainError>;
 }
 
 /// Owner-facing use cases. Every method is scoped to `owner_id`; a caller can
@@ -28,6 +31,13 @@ pub trait EventService: Send + Sync {
     async fn create_event(&self, owner_id: Uuid, details: NewEvent) -> Result<Event, DomainError>;
     async fn list_events(&self, owner_id: Uuid) -> Result<Vec<Event>, DomainError>;
     async fn get_event(&self, owner_id: Uuid, event_id: Uuid) -> Result<Event, DomainError>;
+    async fn update_event(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+        update: EventUpdate,
+    ) -> Result<Event, DomainError>;
+    async fn delete_event(&self, owner_id: Uuid, event_id: Uuid) -> Result<(), DomainError>;
     async fn add_guest(
         &self,
         owner_id: Uuid,
@@ -35,6 +45,25 @@ pub trait EventService: Send + Sync {
         details: NewGuest,
     ) -> Result<Guest, DomainError>;
     async fn list_guests(&self, owner_id: Uuid, event_id: Uuid) -> Result<Vec<Guest>, DomainError>;
+    async fn get_guest(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+        guest_id: Uuid,
+    ) -> Result<Guest, DomainError>;
+    async fn update_guest(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+        guest_id: Uuid,
+        update: GuestUpdate,
+    ) -> Result<Guest, DomainError>;
+    async fn delete_guest(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+        guest_id: Uuid,
+    ) -> Result<(), DomainError>;
     /// Bytes of a printable PDF invitation for one guest.
     async fn render_invite_pdf(
         &self,

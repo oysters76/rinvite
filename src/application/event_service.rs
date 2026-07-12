@@ -4,9 +4,9 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::domain::error::DomainError;
-use crate::domain::event::{Event, NewEvent};
+use crate::domain::event::{Event, EventUpdate, NewEvent};
 use crate::domain::guest::InviteChannel;
-use crate::domain::guest::{Guest, NewGuest};
+use crate::domain::guest::{Guest, GuestUpdate, NewGuest};
 use crate::domain::port::inbound::{BatchSendReport, EventService, SendResult, SendStatus};
 use crate::domain::port::outbound::{
     Clock, EventRepository, GuestRepository, InvitePdfRenderer, InviteSender,
@@ -80,6 +80,24 @@ impl EventService for EventServiceImpl {
         self.owned_event(owner_id, event_id).await
     }
 
+    async fn update_event(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+        update: EventUpdate,
+    ) -> Result<Event, DomainError> {
+        let mut event = self.owned_event(owner_id, event_id).await?;
+        event.apply_update(update);
+        validate_event(&event.as_new())?;
+        self.events.update(&event).await?;
+        Ok(event)
+    }
+
+    async fn delete_event(&self, owner_id: Uuid, event_id: Uuid) -> Result<(), DomainError> {
+        self.owned_event(owner_id, event_id).await?; // ownership gate
+        self.events.delete(event_id).await
+    }
+
     async fn add_guest(
         &self,
         owner_id: Uuid,
@@ -96,6 +114,42 @@ impl EventService for EventServiceImpl {
     async fn list_guests(&self, owner_id: Uuid, event_id: Uuid) -> Result<Vec<Guest>, DomainError> {
         self.owned_event(owner_id, event_id).await?; // ownership gate
         self.guests.list_by_event(event_id).await
+    }
+
+    async fn get_guest(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+        guest_id: Uuid,
+    ) -> Result<Guest, DomainError> {
+        self.owned_event(owner_id, event_id).await?; // ownership gate
+        self.guest_of(event_id, guest_id).await
+    }
+
+    async fn update_guest(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+        guest_id: Uuid,
+        update: GuestUpdate,
+    ) -> Result<Guest, DomainError> {
+        self.owned_event(owner_id, event_id).await?; // ownership gate
+        let mut guest = self.guest_of(event_id, guest_id).await?;
+        guest.apply_update(update);
+        validate_guest(&guest.as_new())?;
+        self.guests.update(&guest).await?;
+        Ok(guest)
+    }
+
+    async fn delete_guest(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+        guest_id: Uuid,
+    ) -> Result<(), DomainError> {
+        self.owned_event(owner_id, event_id).await?; // ownership gate
+        self.guest_of(event_id, guest_id).await?; // exists + belongs to event
+        self.guests.delete(guest_id).await
     }
 
     async fn render_invite_pdf(
@@ -311,6 +365,114 @@ mod tests {
         // Ownership: a different user cannot bulk-send someone else's event.
         assert!(matches!(
             svc.send_einvite_batch(Uuid::new_v4(), ev.id).await,
+            Err(DomainError::NotFound(_))
+        ));
+    }
+
+    fn make_svc() -> (EventServiceImpl, std::sync::Arc<InMemoryEventStore>) {
+        let store = Arc::new(InMemoryEventStore::new());
+        let clock: Arc<dyn Clock> = Arc::new(FixedClock(
+            Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap(),
+        ));
+        let svc = EventServiceImpl::new(
+            store.clone(),
+            store.clone(),
+            Arc::new(FakePdf {
+                last_batch: Mutex::new(0),
+            }),
+            Arc::new(FlakySender),
+            clock,
+            "http://x".into(),
+        );
+        (svc, store)
+    }
+
+    #[tokio::test]
+    async fn partial_update_changes_only_sent_fields_and_revalidates() {
+        let (svc, _) = make_svc();
+        let owner = Uuid::new_v4();
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+
+        // Change just the venue; everything else is untouched.
+        let updated = svc
+            .update_event(
+                owner,
+                ev.id,
+                EventUpdate {
+                    venue_name: Some("New Hall".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.venue_name, "New Hall");
+        assert_eq!(updated.bride_name, "A"); // unchanged
+
+        // An update that violates an invariant is rejected.
+        assert!(matches!(
+            svc.update_event(
+                owner,
+                ev.id,
+                EventUpdate {
+                    end_time: Some(chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap()),
+                    ..Default::default()
+                },
+            )
+            .await,
+            Err(DomainError::InvalidInput(_))
+        ));
+
+        // Foreign owner can't touch it.
+        assert!(matches!(
+            svc.update_event(Uuid::new_v4(), ev.id, EventUpdate::default())
+                .await,
+            Err(DomainError::NotFound(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn guest_update_delete_and_event_delete_cascades() {
+        let (svc, _) = make_svc();
+        let owner = Uuid::new_v4();
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+        let g = svc
+            .add_guest(owner, ev.id, guest("Ravi", InviteChannel::EInvite))
+            .await
+            .unwrap();
+
+        // Update guest contact + max party.
+        let updated = svc
+            .update_guest(
+                owner,
+                ev.id,
+                g.id,
+                GuestUpdate {
+                    email: Some(Some("ravi@ex.com".into())),
+                    max_party_size: Some(4),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.email.as_deref(), Some("ravi@ex.com"));
+        assert_eq!(updated.max_party_size, 4);
+
+        // Delete guest.
+        svc.delete_guest(owner, ev.id, g.id).await.unwrap();
+        assert!(svc.list_guests(owner, ev.id).await.unwrap().is_empty());
+
+        // Deleting the event cascades: add a guest, delete event, event gone.
+        svc.add_guest(owner, ev.id, guest("X", InviteChannel::Print))
+            .await
+            .unwrap();
+        svc.delete_event(owner, ev.id).await.unwrap();
+        assert!(matches!(
+            svc.get_event(owner, ev.id).await,
+            Err(DomainError::NotFound(_))
+        ));
+        // The cascaded guest is gone too (list on a deleted event -> NotFound).
+        assert!(matches!(
+            svc.list_guests(owner, ev.id).await,
             Err(DomainError::NotFound(_))
         ));
     }

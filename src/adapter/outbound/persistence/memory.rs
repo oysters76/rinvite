@@ -30,6 +30,10 @@ impl UserRepository for InMemoryUserRepository {
         Ok(users.values().find(|u| u.email == email).cloned())
     }
 
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, DomainError> {
+        Ok(self.users.read().await.get(&id).cloned())
+    }
+
     async fn save(&self, user: &User) -> Result<(), DomainError> {
         let mut users = self.users.write().await;
         if users.values().any(|u| u.email == user.email) {

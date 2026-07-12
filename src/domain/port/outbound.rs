@@ -14,6 +14,7 @@ use super::super::model::User;
 #[async_trait]
 pub trait UserRepository: Send + Sync {
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, DomainError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, DomainError>;
     async fn save(&self, user: &User) -> Result<(), DomainError>;
 }
 
@@ -44,6 +45,9 @@ pub trait EventRepository: Send + Sync {
     async fn save(&self, event: &Event) -> Result<(), DomainError>;
     async fn find(&self, id: Uuid) -> Result<Option<Event>, DomainError>;
     async fn list_by_owner(&self, owner_id: Uuid) -> Result<Vec<Event>, DomainError>;
+    async fn update(&self, event: &Event) -> Result<(), DomainError>;
+    /// Delete the event; its guests are removed too (DB cascade / in-memory).
+    async fn delete(&self, id: Uuid) -> Result<(), DomainError>;
 }
 
 #[async_trait]
@@ -54,6 +58,9 @@ pub trait GuestRepository: Send + Sync {
     async fn list_by_event(&self, event_id: Uuid) -> Result<Vec<Guest>, DomainError>;
     /// Persist an RSVP change (status / party size / responded_at).
     async fn update_rsvp(&self, guest: &Guest) -> Result<(), DomainError>;
+    /// Persist edits to the guest's details (name/channel/contact/max party).
+    async fn update(&self, guest: &Guest) -> Result<(), DomainError>;
+    async fn delete(&self, id: Uuid) -> Result<(), DomainError>;
 }
 
 /// Renders printable invitation PDFs for guests of an event.

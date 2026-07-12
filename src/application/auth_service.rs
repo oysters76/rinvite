@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use uuid::Uuid;
 
 use crate::domain::error::DomainError;
 use crate::domain::model::User;
@@ -72,5 +73,12 @@ impl AuthService for AuthServiceImpl {
                 Err(DomainError::InvalidCredentials)
             }
         }
+    }
+
+    async fn me(&self, user_id: Uuid) -> Result<User, DomainError> {
+        self.users
+            .find_by_id(user_id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound("user".to_owned()))
     }
 }
