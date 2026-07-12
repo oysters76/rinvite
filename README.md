@@ -10,6 +10,7 @@ a **printable PDF** rendered onto your own card design, or a beautiful
 
 ![Rust](https://img.shields.io/badge/Rust-edition_2024-000000?logo=rust)
 ![Architecture](https://img.shields.io/badge/architecture-hexagonal-8a7a63)
+![Svelte](https://img.shields.io/badge/Svelte-v5-ff3e00?logo=svelte&logoColor=white)
 ![Auth](https://img.shields.io/badge/auth-argon2_%2B_JWT-b38728)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
