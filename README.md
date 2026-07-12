@@ -25,6 +25,7 @@ a **printable PDF** rendered onto your own card design, or a beautiful
 - 🌸 **Animated e‑invites** — a gorgeous, self‑contained HTML invitation (opening gates, falling petals, gold styling) served per‑guest, with a built‑in RSVP form.
 - ✅ **RSVP collection** — guests respond via their unique link; party size is validated against a per‑guest cap and the RSVP deadline.
 - 📦 **Bulk actions** — merge every printed invite into one PDF to download, or sequentially send every e‑invite and get a per‑guest delivery report.
+- 🖥️ **Organizer dashboard** — an optional web UI (SvelteKit + shadcn‑svelte) in [`web/`](web/) to manage events, guests, RSVP status, CSV import, and bulk send/print — talking to the same API.
 - 🧩 **Hexagonal architecture** — the domain has zero framework/database dependencies; swap Postgres for in‑memory (or a real WhatsApp sender for the no‑op one) without touching the core.
 - 🐘 **Runs anywhere** — in‑memory for zero‑setup local dev, or Postgres for production. Ships with a Dockerfile, docker‑compose, and CI.
 
@@ -40,6 +41,7 @@ a **printable PDF** rendered onto your own card design, or a beautiful
 | Database | [sqlx](https://github.com/launchbadge/sqlx) 0.9 (Postgres, plain SQL, rustls) |
 | Auth | [argon2](https://crates.io/crates/argon2) + [jsonwebtoken](https://crates.io/crates/jsonwebtoken) (HS256) |
 | PDF | [printpdf](https://crates.io/crates/printpdf) + [ttf-parser](https://crates.io/crates/ttf-parser) |
+| Frontend *(optional)* | [SvelteKit](https://svelte.dev/) + [shadcn-svelte](https://shadcn-svelte.com) + Tailwind, in [`web/`](web/) |
 
 No ORM, no macro magic — just ports, adapters, and plain SQL.
 
@@ -90,7 +92,38 @@ curl -s -X POST $BASE/events/$EVENT/guests -H "authorization: Bearer $TOKEN" \
 curl -s "$BASE/events/$EVENT/invites/print.pdf" -H "authorization: Bearer $TOKEN" -o invites.pdf
 ```
 
-> 💡 Prefer a UI? Import [`postman/rinvite.postman_collection.json`](postman/rinvite.postman_collection.json) into Postman — every endpoint is there and the requests chain automatically.
+> 💡 Prefer Postman? Import [`postman/rinvite.postman_collection.json`](postman/rinvite.postman_collection.json) — every endpoint is there and the requests chain automatically.
+
+---
+
+## 🖥️ Web dashboard (optional UI)
+
+Rather click than curl? A **SvelteKit + shadcn‑svelte** organizer dashboard lives
+in [`web/`](web/) — a static single‑page app that talks to this API. It covers
+the whole workflow: create/edit/delete events, manage the guest list (single add,
+quick‑add, **CSV import**), search / filter / sort, per‑guest and **bulk send /
+download PDF**, move guests between channels, and a live RSVP summary — in a
+clean, minimalist UI.
+
+```bash
+# 1) run the API (see Quick start above)
+export JWT_SECRET=$(openssl rand -hex 32)
+cargo run                       # → http://localhost:3000
+
+# 2) in another terminal, run the dashboard
+cd web
+npm install
+npm run dev                     # → http://localhost:5173
+```
+
+Open **http://localhost:5173**, create an account, and go. The dashboard reads
+the API base URL from `VITE_API_BASE_URL` (defaults to `http://localhost:3000`).
+Build a static bundle with `npm run build` and deploy it to any static host,
+then set `VITE_API_BASE_URL` to your API and the backend's `CORS_ALLOWED_ORIGINS`
+to the dashboard's origin. See [`web/README.md`](web/README.md) for details.
+
+> CORS just works in dev — the API allows any origin unless you set
+> `CORS_ALLOWED_ORIGINS`.
 
 ---
 

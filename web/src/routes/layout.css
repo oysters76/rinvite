@@ -1,1 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap');
 @import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── Modernist design system → shadcn tokens ──────────────────────────────
+   Sharp corners (radius 0), Archivo, a bold red-orange accent used sparingly,
+   warm-grey surfaces. Source: rinvite-design "Modernist" styles. */
+:root {
+	--radius: 0rem;
+
+	--background: #f3f2f2;
+	--foreground: #201e1d;
+	--card: #eae9e9;
+	--card-foreground: #201e1d;
+	--popover: #eae9e9;
+	--popover-foreground: #201e1d;
+
+	--primary: #ec3013;
+	--primary-foreground: #f3f2f2;
+
+	--secondary: #e4e1e1;
+	--secondary-foreground: #201e1d;
+	--muted: #e8e5e5;
+	--muted-foreground: color-mix(in srgb, #201e1d 52%, #f3f2f2);
+	--accent: #e4e1e1;
+	--accent-foreground: #201e1d;
+
+	--destructive: #ec3013;
+	--destructive-foreground: #f3f2f2;
+
+	--border: color-mix(in srgb, #201e1d 24%, transparent);
+	--input: color-mix(in srgb, #201e1d 30%, transparent);
+	--ring: #ec3013;
+
+	/* Design ramps for bespoke bits (badges, stats). */
+	--accent-100: #fff2ef;
+	--accent-800: #7c1405;
+	--neutral-100: #f8f4f4;
+	--neutral-800: #444141;
+}
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+
+	--radius-sm: 0rem;
+	--radius-md: 0rem;
+	--radius-lg: 0rem;
+	--radius-xl: 0rem;
+
+	--font-sans: 'Archivo', system-ui, sans-serif;
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	body {
+		@apply bg-background text-foreground;
+		font-family: var(--font-sans);
+		font-size: 15px;
+		line-height: 1.55;
+	}
+	/* Modernist headings: heavy weight, tight tracking. */
+	h1,
+	h2,
+	h3,
+	h4 {
+		font-weight: 800;
+		letter-spacing: -0.015em;
+		line-height: 1.12;
+	}
+	/* Uppercase micro-labels used across the dashboard. */
+	.kicker {
+		font-size: 11px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--muted-foreground);
+	}
+}

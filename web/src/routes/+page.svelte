@@ -1,2 +1,7 @@
-<h1>Welcome to SvelteKit</h1>
-<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { isAuthenticated } from '$lib/stores/session';
+
+	// Landing: send to the dashboard or sign in.
+	goto(isAuthenticated() ? '/events' : '/login', { replaceState: true });
+</script>
