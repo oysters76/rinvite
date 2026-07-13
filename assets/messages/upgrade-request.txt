@@ -1,0 +1,7 @@
+A Rinvite user has requested a plan upgrade.
+
+  User:          {user_email}
+  Current plan:  {current_plan}
+  Requested at:  {requested_at}
+
+Reach out to arrange the upgrade, then update their plan in the database.

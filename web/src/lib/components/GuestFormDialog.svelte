@@ -11,12 +11,15 @@
 		open = $bindable(false),
 		eventId,
 		guest = null,
-		onsaved
+		onsaved,
+		onlimit
 	}: {
 		open?: boolean;
 		eventId: string;
 		guest?: Guest | null;
 		onsaved?: () => void;
+		/** Called when the server rejects with a plan limit (HTTP 402). */
+		onlimit?: (message: string) => void;
 	} = $props();
 
 	let name = $state('');
@@ -57,7 +60,13 @@
 			open = false;
 			onsaved?.();
 		} catch (err) {
-			toast.error(err instanceof ApiError ? err.message : 'Could not save guest');
+			// A plan limit (402) is handed to the parent to show the upgrade dialog.
+			if (err instanceof ApiError && err.status === 402) {
+				open = false;
+				onlimit?.(err.message);
+			} else {
+				toast.error(err instanceof ApiError ? err.message : 'Could not save guest');
+			}
 		} finally {
 			saving = false;
 		}

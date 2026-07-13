@@ -12,11 +12,12 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 
 use crate::domain::error::DomainError;
-use crate::domain::port::inbound::{AuthService, EventService, InviteService};
+use crate::domain::port::inbound::{AuthService, BillingService, EventService, InviteService};
 use crate::domain::port::outbound::TokenVerifier;
 
 pub mod auth;
 pub mod auth_extractor;
+pub mod billing;
 pub mod events;
 pub mod html;
 pub mod invites;
@@ -35,8 +36,11 @@ pub struct AppState {
     pub auth: Arc<dyn AuthService>,
     pub events: Arc<dyn EventService>,
     pub invites: Arc<dyn InviteService>,
+    pub billing: Arc<dyn BillingService>,
     pub verifier: Arc<dyn TokenVerifier>,
     pub public_base_url: String,
+    /// Business contact address shown to users in the "limit reached" dialog.
+    pub contact_email: String,
     /// The e-invite HTML template, loaded once at startup.
     pub einvite_template: Arc<str>,
 }
@@ -50,6 +54,7 @@ pub fn routes(state: AppState) -> Router {
         .merge(auth::router())
         .merge(events::router())
         .merge(invites::router())
+        .merge(billing::router())
         .layer(cors_layer_from_env())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -108,6 +113,9 @@ impl IntoResponse for ApiError {
             DomainError::EmailAlreadyExists => (StatusCode::CONFLICT, self.0.to_string()),
             DomainError::InvalidCredentials => (StatusCode::UNAUTHORIZED, self.0.to_string()),
             DomainError::Unauthorized => (StatusCode::UNAUTHORIZED, self.0.to_string()),
+            // Verified-email gate and plan caps get distinct codes the SPA keys on.
+            DomainError::EmailNotVerified => (StatusCode::FORBIDDEN, self.0.to_string()),
+            DomainError::LimitReached(_) => (StatusCode::PAYMENT_REQUIRED, self.0.to_string()),
             DomainError::NotFound(_) => (StatusCode::NOT_FOUND, self.0.to_string()),
             DomainError::RsvpClosed => (StatusCode::CONFLICT, self.0.to_string()),
             DomainError::PartySizeExceeded => {

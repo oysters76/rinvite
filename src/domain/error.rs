@@ -30,6 +30,16 @@ pub enum DomainError {
     #[error("authentication required")]
     Unauthorized,
 
+    // The email address has not been verified yet — login is refused until it
+    // is. The message is safe to return.
+    #[error("email not verified")]
+    EmailNotVerified,
+
+    // A plan usage limit was hit. The message names the limit (e.g. "the free
+    // plan allows 1 event") and is safe to return to the caller.
+    #[error("{0}")]
+    LimitReached(String),
+
     #[error("repository error: {0}")]
     Repository(String),
 

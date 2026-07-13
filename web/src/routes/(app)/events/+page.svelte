@@ -2,9 +2,11 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { loadEventsOverview, type EventOverview } from '$lib/services';
-	import { ApiError } from '$lib/api';
+	import { ApiError, config } from '$lib/api';
 	import EventCard from '$lib/components/EventCard.svelte';
 	import EventFormDialog from '$lib/components/EventFormDialog.svelte';
+	import LimitReachedDialog from '$lib/components/LimitReachedDialog.svelte';
+	import { authStore } from '$lib/stores/auth.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { toast } from 'svelte-sonner';
@@ -12,6 +14,16 @@
 
 	let events = $state<EventOverview[] | null>(null);
 	let showCreate = $state(false);
+
+	let showLimit = $state(false);
+	let limitMessage = $state('');
+	let contactEmail = $state('');
+
+	async function onLimit(message: string) {
+		limitMessage = message;
+		contactEmail = (await config.get().catch(() => ({ contact_email: '' }))).contact_email;
+		showLimit = true;
+	}
 
 	async function refresh() {
 		try {
@@ -60,4 +72,15 @@
 	{/if}
 </main>
 
-<EventFormDialog bind:open={showCreate} onsaved={(e) => goto(`/events/${e.id}`)} />
+<EventFormDialog
+	bind:open={showCreate}
+	onsaved={(e) => goto(`/events/${e.id}`)}
+	onlimit={onLimit}
+/>
+
+<LimitReachedDialog
+	bind:open={showLimit}
+	plan={authStore.user?.plan ?? 'free'}
+	{contactEmail}
+	message={limitMessage}
+/>

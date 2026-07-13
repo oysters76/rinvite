@@ -4,6 +4,8 @@ use crate::domain::error::DomainError;
 use crate::domain::event::Event;
 use crate::domain::guest::Guest;
 
+pub mod account;
+
 // Editable message templates, embedded at compile time and overridable via env.
 const DEFAULT_EMAIL_HTML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -61,7 +63,9 @@ impl MessageTemplates {
     }
 }
 
-fn load(env_var: &str, default: &str) -> Result<String, DomainError> {
+/// Load a template: the file pointed at by `env_var` if set, else the embedded
+/// default. Shared with the account-email templates in the `account` submodule.
+pub(super) fn load(env_var: &str, default: &str) -> Result<String, DomainError> {
     match std::env::var(env_var) {
         Ok(path) => std::fs::read_to_string(&path)
             .map_err(|e| DomainError::Repository(format!("cannot read {env_var} {path}: {e}"))),
@@ -93,7 +97,7 @@ fn build_vars(e: &Event, g: &Guest, invite_url: &str) -> Vec<(&'static str, Stri
 
 /// Replace `{key}` placeholders. When `html`, values are HTML-escaped so a guest
 /// name can't inject markup into the email body.
-fn fill(template: &str, vars: &[(&str, String)], html: bool) -> String {
+pub(super) fn fill(template: &str, vars: &[(&str, String)], html: bool) -> String {
     let mut out = template.to_owned();
     for (k, v) in vars {
         let value = if html { html_escape(v) } else { v.clone() };

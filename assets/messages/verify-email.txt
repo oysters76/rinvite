@@ -1,0 +1,9 @@
+Welcome to Rinvite!
+
+Please confirm this email address ({email}) to activate your account.
+
+Verify your email here:
+{verify_url}
+
+This link expires in 24 hours. If you didn't create a Rinvite account, you
+can safely ignore this message.

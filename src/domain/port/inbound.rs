@@ -18,10 +18,26 @@ pub struct AuthToken {
 
 #[async_trait]
 pub trait AuthService: Send + Sync {
-    async fn signup(&self, email: &str, password: &str) -> Result<AuthToken, DomainError>;
+    /// Create an account and email a verification link. No token is issued —
+    /// the user must verify before they can log in.
+    async fn signup(&self, email: &str, password: &str) -> Result<(), DomainError>;
+    /// Authenticate. Fails with `EmailNotVerified` until the address is verified.
     async fn login(&self, email: &str, password: &str) -> Result<AuthToken, DomainError>;
+    /// Confirm an email-verification token, activating the account.
+    async fn verify_email(&self, token: &str) -> Result<(), DomainError>;
+    /// Re-send the verification email. Always succeeds (no account enumeration);
+    /// a mail only goes out if the address exists and is still unverified.
+    async fn resend_verification(&self, email: &str) -> Result<(), DomainError>;
     /// The authenticated user's own record (for a "current user" endpoint).
     async fn me(&self, user_id: Uuid) -> Result<User, DomainError>;
+}
+
+/// Non-billing "billing" use case: a user asks the app owner to upgrade their
+/// plan. There is no self-serve payment — this just notifies the owner.
+#[async_trait]
+pub trait BillingService: Send + Sync {
+    /// Email the app owner that this user would like to upgrade.
+    async fn request_upgrade(&self, user_id: Uuid) -> Result<(), DomainError>;
 }
 
 /// Owner-facing use cases. Every method is scoped to `owner_id`; a caller can

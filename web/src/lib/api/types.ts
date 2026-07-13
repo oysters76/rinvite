@@ -5,9 +5,18 @@ export interface AuthResponse {
 	token: string;
 }
 
+export type Plan = 'free' | 'pro' | 'max';
+
 export interface User {
 	id: string;
 	email: string;
+	plan: Plan;
+	email_verified: boolean;
+}
+
+/** Public client configuration served by `GET /config`. */
+export interface AppConfig {
+	contact_email: string;
 }
 
 export interface Event {

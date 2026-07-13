@@ -21,6 +21,8 @@ a **printable PDF** rendered onto your own card design, or a beautiful
 ## ✨ Features
 
 - 🔐 **Secure auth** — signup/login with argon2id hashing, JWT sessions, timing‑safe login (no account enumeration), and a fail‑fast required signing secret.
+- ✉️ **Email verification** — signup emails a verification link; login is refused until the address is confirmed (with a one‑click resend).
+- 🎟️ **Subscription plans** — Free / Pro / Max tiers with per‑plan usage limits; hitting one opens an in‑app dialog to contact the owner and request an upgrade.
 - 💒 **Events & guests** — full CRUD for wedding events and their guest lists, scoped so a user only ever sees their own data.
 - 🖨️ **PDF invitations** — overlay personalized text onto *your* card image with configurable fonts, positions, and colors. Sized to A5 out of the box.
 - 🌸 **Animated e‑invites** — a gorgeous, self‑contained HTML invitation (opening gates, falling petals, gold styling) served per‑guest, with a built‑in RSVP form.
@@ -67,8 +69,15 @@ Then walk the whole flow with `curl`:
 ```bash
 BASE=http://localhost:3000
 
-# 1) Sign up → returns a JWT
-TOKEN=$(curl -s -X POST $BASE/auth/signup \
+# 1) Sign up → emails a verification link (logged to the console in local dev)
+curl -s -X POST $BASE/auth/signup \
+  -H 'content-type: application/json' \
+  -d '{"email":"host@example.com","password":"hunter2!"}' | jq
+
+# 1a) Verify using the token from that link, then log in for a JWT
+curl -s -X POST $BASE/auth/verify \
+  -H 'content-type: application/json' -d '{"token":"<token-from-email>"}'
+TOKEN=$(curl -s -X POST $BASE/auth/login \
   -H 'content-type: application/json' \
   -d '{"email":"host@example.com","password":"hunter2!"}' | jq -r .token)
 
@@ -145,8 +154,33 @@ All configuration is via environment variables:
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | | *(log‑only)* | [Twilio WhatsApp](https://www.twilio.com/docs/whatsapp) credentials + sender (E.164, e.g. `+14155238886`). All three set → WhatsApp messages are sent; otherwise logged. |
 | `TWILIO_CONTENT_SID` | | *(freeform)* | A Meta‑approved template's ContentSid. **Required for production** business‑initiated WhatsApp (freeform text only works in Twilio's sandbox / a 24h session window). |
 | `EMAIL_TEMPLATE_HTML` / `EMAIL_TEMPLATE_TEXT` / `EMAIL_SUBJECT` / `WHATSAPP_TEMPLATE` | | *(embedded)* | Paths to override the built‑in message templates in [`assets/messages/`](assets/messages/). |
+| `BUSINESS_CONTACT_EMAIL` | | `hello@example.com` | Contact address shown to users in the "limit reached" dialog. |
+| `UPGRADE_NOTIFY_EMAIL` | | *(= contact)* | Recipient of upgrade‑request notifications (the app owner). |
+| `VERIFY_EMAIL_TEMPLATE_*` / `UPGRADE_EMAIL_TEMPLATE_*` (`HTML`/`TEXT`/`SUBJECT`) | | *(embedded)* | Paths to override the account‑lifecycle email templates in [`assets/messages/`](assets/messages/). |
 
 The server listens on **port 3000**.
+
+### Plans, verification & upgrade requests
+
+New accounts start unverified: signup emails a verification link
+(`{PUBLIC_BASE_URL}/verify?token=…`) and **login is refused until the email is
+confirmed**. Users can resend the link from the signup/login screens.
+
+Each account has a plan enforced on create‑event and add‑guest:
+
+| Plan | Events | Guests per event |
+|---|---|---|
+| Free | 1 | 10 |
+| Pro | 5 | 100 |
+| Max | unlimited | unlimited |
+
+Exceeding a limit returns **HTTP 402** and the dashboard opens a dialog with the
+`BUSINESS_CONTACT_EMAIL` and a **Request an upgrade** button, which emails
+`UPGRADE_NOTIFY_EMAIL` (rendered from the customizable
+[`upgrade-request.*`](assets/messages/) templates). There is no self‑serve
+billing — an operator changes the row's `plan` (`free`/`pro`/`max`) to upgrade.
+The verification and upgrade emails share the same log‑only fallback as the rest
+of the app, so everything works in local dev without a Resend account.
 
 ### E‑invite delivery (WhatsApp + email)
 
@@ -214,8 +248,11 @@ See [deploy/terraform/README.md](deploy/terraform/README.md) for the full runboo
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/auth/signup` | Create an account → `{ token }` |
-| `POST` | `/auth/login` | Log in → `{ token }` |
+| `POST` | `/auth/signup` | Create an account → `{ verification_required }` (emails a link) |
+| `POST` | `/auth/verify` | Confirm an email `{ token }` → `204` |
+| `POST` | `/auth/resend-verification` | Re‑send the verification email `{ email }` → `204` |
+| `POST` | `/auth/login` | Log in → `{ token }` (`403` until the email is verified) |
+| `GET` | `/config` | Public client config `{ contact_email }` |
 | `GET` | `/invite/{token}` | The guest's e‑invite web page (HTML) |
 | `POST` | `/invite/{token}/rsvp` | Submit an RSVP `{ attending, party_size }` |
 
@@ -223,7 +260,8 @@ See [deploy/terraform/README.md](deploy/terraform/README.md) for the full runboo
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/auth/me` | The current user `{ id, email }` |
+| `GET` | `/auth/me` | The current user `{ id, email, plan, email_verified }` |
+| `POST` | `/billing/upgrade-request` | Email the owner requesting a plan upgrade → `204` |
 | `POST` · `GET` | `/events` | Create / list your events |
 | `GET` · `PATCH` · `DELETE` | `/events/{id}` | Read / partial‑update / delete an event |
 | `POST` · `GET` | `/events/{id}/guests` | Add / list guests |

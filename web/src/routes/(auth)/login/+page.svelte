@@ -10,6 +10,8 @@
 	let email = $state('');
 	let password = $state('');
 	let loading = $state(false);
+	let needsVerification = $state(false);
+	let resending = $state(false);
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
@@ -18,9 +20,26 @@
 			await auth.login(email, password);
 			await goto('/events');
 		} catch (err) {
-			toast.error(err instanceof ApiError ? err.message : 'Could not sign in');
+			// 403 = correct credentials but the email isn't verified yet.
+			if (err instanceof ApiError && err.status === 403) {
+				needsVerification = true;
+			} else {
+				toast.error(err instanceof ApiError ? err.message : 'Could not sign in');
+			}
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function resend() {
+		resending = true;
+		try {
+			await auth.resendVerification(email);
+			toast.success('Verification email sent.');
+		} catch {
+			toast.error('Could not resend the email.');
+		} finally {
+			resending = false;
 		}
 	}
 </script>
@@ -33,6 +52,19 @@
 		</Card.Header>
 		<form onsubmit={submit}>
 			<Card.Content class="grid gap-4">
+				{#if needsVerification}
+					<div class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+						<p>Please verify your email before signing in. Check your inbox for the link.</p>
+						<button
+							type="button"
+							class="text-primary mt-1 underline disabled:opacity-50"
+							onclick={resend}
+							disabled={resending}
+						>
+							{resending ? 'Sending…' : 'Resend verification email'}
+						</button>
+					</div>
+				{/if}
 				<div class="grid gap-1.5">
 					<Label for="email">Email</Label>
 					<Input id="email" type="email" bind:value={email} required autocomplete="email" />

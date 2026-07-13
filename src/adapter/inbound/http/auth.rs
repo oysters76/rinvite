@@ -15,6 +15,8 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/auth/signup", post(signup))
         .route("/auth/login", post(login))
+        .route("/auth/verify", post(verify))
+        .route("/auth/resend-verification", post(resend_verification))
         .route("/auth/me", get(me))
 }
 
@@ -29,14 +31,22 @@ struct AuthResponse {
     token: String,
 }
 
+/// Signup no longer returns a token: the user must verify their email first.
+#[derive(Serialize)]
+struct SignupResponse {
+    verification_required: bool,
+}
+
 async fn signup(
     State(state): State<AppState>,
     Json(body): Json<Credentials>,
 ) -> Result<Response, ApiError> {
-    let token = state.auth.signup(&body.email, &body.password).await?;
+    state.auth.signup(&body.email, &body.password).await?;
     Ok((
         StatusCode::CREATED,
-        Json(AuthResponse { token: token.value }),
+        Json(SignupResponse {
+            verification_required: true,
+        }),
     )
         .into_response())
 }
@@ -49,10 +59,40 @@ async fn login(
     Ok((StatusCode::OK, Json(AuthResponse { token: token.value })).into_response())
 }
 
+#[derive(Deserialize)]
+struct VerifyRequest {
+    token: String,
+}
+
+/// Confirm an email-verification token. 204 on success; 400 if invalid/expired.
+async fn verify(
+    State(state): State<AppState>,
+    Json(body): Json<VerifyRequest>,
+) -> Result<StatusCode, ApiError> {
+    state.auth.verify_email(&body.token).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct ResendRequest {
+    email: String,
+}
+
+/// Re-send the verification email. Always 204 (never reveals account state).
+async fn resend_verification(
+    State(state): State<AppState>,
+    Json(body): Json<ResendRequest>,
+) -> Result<StatusCode, ApiError> {
+    state.auth.resend_verification(&body.email).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[derive(Serialize)]
 struct UserResponse {
     id: Uuid,
     email: String,
+    plan: String,
+    email_verified: bool,
 }
 
 /// The authenticated caller's own account (never the password hash).
@@ -64,5 +104,7 @@ async fn me(
     Ok(Json(UserResponse {
         id: user.id,
         email: user.email,
+        plan: user.plan.as_str().to_owned(),
+        email_verified: user.email_verified,
     }))
 }

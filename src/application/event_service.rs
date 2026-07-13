@@ -9,7 +9,7 @@ use crate::domain::guest::InviteChannel;
 use crate::domain::guest::{Guest, GuestUpdate, NewGuest};
 use crate::domain::port::inbound::{BatchSendReport, EventService, SendResult, SendStatus};
 use crate::domain::port::outbound::{
-    Clock, EventRepository, GuestRepository, InvitePdfRenderer, InviteSender,
+    Clock, EventRepository, GuestRepository, InvitePdfRenderer, InviteSender, UserRepository,
 };
 use crate::domain::validation::{validate_event, validate_guest};
 
@@ -19,6 +19,7 @@ use crate::domain::validation::{validate_event, validate_guest};
 pub struct EventServiceImpl {
     events: Arc<dyn EventRepository>,
     guests: Arc<dyn GuestRepository>,
+    users: Arc<dyn UserRepository>,
     pdf: Arc<dyn InvitePdfRenderer>,
     sender: Arc<dyn InviteSender>,
     clock: Arc<dyn Clock>,
@@ -30,6 +31,7 @@ impl EventServiceImpl {
     pub fn new(
         events: Arc<dyn EventRepository>,
         guests: Arc<dyn GuestRepository>,
+        users: Arc<dyn UserRepository>,
         pdf: Arc<dyn InvitePdfRenderer>,
         sender: Arc<dyn InviteSender>,
         clock: Arc<dyn Clock>,
@@ -38,11 +40,21 @@ impl EventServiceImpl {
         Self {
             events,
             guests,
+            users,
             pdf,
             sender,
             clock,
             public_base_url,
         }
+    }
+
+    /// The subscription plan for `owner_id`, or `NotFound` if the user is gone.
+    async fn owner_plan(&self, owner_id: Uuid) -> Result<crate::domain::plan::Plan, DomainError> {
+        self.users
+            .find_by_id(owner_id)
+            .await?
+            .map(|u| u.plan)
+            .ok_or_else(|| DomainError::NotFound("user".to_owned()))
     }
 
     /// Load an event only if it exists and belongs to `owner_id`.
@@ -67,6 +79,18 @@ impl EventServiceImpl {
 impl EventService for EventServiceImpl {
     async fn create_event(&self, owner_id: Uuid, details: NewEvent) -> Result<Event, DomainError> {
         validate_event(&details)?;
+
+        // Plan gate: cap the number of events an owner may create.
+        if let Some(max) = self.owner_plan(owner_id).await?.limits().max_events {
+            let count = self.events.list_by_owner(owner_id).await?.len() as u32;
+            if count >= max {
+                return Err(DomainError::LimitReached(format!(
+                    "your plan allows {max} event{}",
+                    if max == 1 { "" } else { "s" }
+                )));
+            }
+        }
+
         let event = Event::new(owner_id, details, self.clock.now());
         self.events.save(&event).await?;
         Ok(event)
@@ -106,6 +130,22 @@ impl EventService for EventServiceImpl {
     ) -> Result<Guest, DomainError> {
         self.owned_event(owner_id, event_id).await?; // ownership gate
         validate_guest(&details)?;
+
+        // Plan gate: cap the number of guests on a single event.
+        if let Some(max) = self
+            .owner_plan(owner_id)
+            .await?
+            .limits()
+            .max_guests_per_event
+        {
+            let count = self.guests.list_by_event(event_id).await?.len() as u32;
+            if count >= max {
+                return Err(DomainError::LimitReached(format!(
+                    "your plan allows {max} guests per event"
+                )));
+            }
+        }
+
         let guest = Guest::new(event_id, details, self.clock.now());
         self.guests.save(&guest).await?;
         Ok(guest)
@@ -252,6 +292,21 @@ mod tests {
 
     use super::*;
     use crate::adapter::outbound::persistence::events_memory::InMemoryEventStore;
+    use crate::adapter::outbound::persistence::memory::InMemoryUserRepository;
+    use crate::domain::model::User;
+    use crate::domain::plan::Plan;
+
+    /// A user repository holding a single owner on the given plan (email already
+    /// verified), returning the repo and that owner's id.
+    async fn user_on_plan(plan: Plan) -> (Arc<InMemoryUserRepository>, Uuid) {
+        let users = Arc::new(InMemoryUserRepository::new());
+        let now = Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap();
+        let mut u = User::new("owner@example.com".into(), "hash".into(), now);
+        u.plan = plan;
+        u.email_verified = true;
+        users.save(&u).await.unwrap();
+        (users, u.id)
+    }
 
     /// Records how many guests the last `render_all` batch received.
     struct FakePdf {
@@ -321,16 +376,18 @@ mod tests {
         let clock: Arc<dyn Clock> = Arc::new(FixedClock(
             Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap(),
         ));
+        // Max plan: no event/guest caps so this batching test is unaffected.
+        let (users, owner) = user_on_plan(Plan::Max).await;
         let svc = EventServiceImpl::new(
             store.clone(),
             store.clone(),
+            users,
             pdf.clone(),
             Arc::new(FlakySender),
             clock,
             "http://x".into(),
         );
 
-        let owner = Uuid::new_v4();
         let ev = svc.create_event(owner, sample_event()).await.unwrap();
         svc.add_guest(owner, ev.id, guest("ok", InviteChannel::EInvite))
             .await
@@ -369,14 +426,17 @@ mod tests {
         ));
     }
 
-    fn make_svc() -> (EventServiceImpl, std::sync::Arc<InMemoryEventStore>) {
+    /// Build a service on the `Max` plan (no caps) plus its owner id.
+    async fn make_svc() -> (EventServiceImpl, std::sync::Arc<InMemoryEventStore>, Uuid) {
         let store = Arc::new(InMemoryEventStore::new());
         let clock: Arc<dyn Clock> = Arc::new(FixedClock(
             Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap(),
         ));
+        let (users, owner) = user_on_plan(Plan::Max).await;
         let svc = EventServiceImpl::new(
             store.clone(),
             store.clone(),
+            users,
             Arc::new(FakePdf {
                 last_batch: Mutex::new(0),
             }),
@@ -384,13 +444,12 @@ mod tests {
             clock,
             "http://x".into(),
         );
-        (svc, store)
+        (svc, store, owner)
     }
 
     #[tokio::test]
     async fn partial_update_changes_only_sent_fields_and_revalidates() {
-        let (svc, _) = make_svc();
-        let owner = Uuid::new_v4();
+        let (svc, _, owner) = make_svc().await;
         let ev = svc.create_event(owner, sample_event()).await.unwrap();
 
         // Change just the venue; everything else is untouched.
@@ -432,8 +491,7 @@ mod tests {
 
     #[tokio::test]
     async fn guest_update_delete_and_event_delete_cascades() {
-        let (svc, _) = make_svc();
-        let owner = Uuid::new_v4();
+        let (svc, _, owner) = make_svc().await;
         let ev = svc.create_event(owner, sample_event()).await.unwrap();
         let g = svc
             .add_guest(owner, ev.id, guest("Ravi", InviteChannel::EInvite))
@@ -475,5 +533,68 @@ mod tests {
             svc.list_guests(owner, ev.id).await,
             Err(DomainError::NotFound(_))
         ));
+    }
+
+    /// Build a service whose single owner is on `plan`; returns svc + owner id.
+    async fn svc_on_plan(plan: Plan) -> (EventServiceImpl, Uuid) {
+        let store = Arc::new(InMemoryEventStore::new());
+        let clock: Arc<dyn Clock> = Arc::new(FixedClock(
+            Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap(),
+        ));
+        let (users, owner) = user_on_plan(plan).await;
+        let svc = EventServiceImpl::new(
+            store.clone(),
+            store.clone(),
+            users,
+            Arc::new(FakePdf {
+                last_batch: Mutex::new(0),
+            }),
+            Arc::new(FlakySender),
+            clock,
+            "http://x".into(),
+        );
+        (svc, owner)
+    }
+
+    #[tokio::test]
+    async fn free_plan_caps_events_at_one() {
+        let (svc, owner) = svc_on_plan(Plan::Free).await;
+        svc.create_event(owner, sample_event()).await.unwrap();
+        // Second event is over the free cap.
+        assert!(matches!(
+            svc.create_event(owner, sample_event()).await,
+            Err(DomainError::LimitReached(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn free_plan_caps_guests_at_ten_per_event() {
+        let (svc, owner) = svc_on_plan(Plan::Free).await;
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+        for i in 0..10 {
+            svc.add_guest(owner, ev.id, guest(&format!("g{i}"), InviteChannel::Print))
+                .await
+                .unwrap();
+        }
+        // The 11th guest is over the free cap.
+        assert!(matches!(
+            svc.add_guest(owner, ev.id, guest("g11", InviteChannel::Print))
+                .await,
+            Err(DomainError::LimitReached(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn max_plan_is_unlimited() {
+        let (svc, owner) = svc_on_plan(Plan::Max).await;
+        // Many events, each with more guests than any finite cap allows.
+        for _ in 0..3 {
+            let ev = svc.create_event(owner, sample_event()).await.unwrap();
+            for i in 0..150 {
+                svc.add_guest(owner, ev.id, guest(&format!("g{i}"), InviteChannel::Print))
+                    .await
+                    .unwrap();
+            }
+        }
     }
 }

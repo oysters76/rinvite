@@ -4,12 +4,14 @@
 	import { goto } from '$app/navigation';
 	import {
 		ApiError,
+		config,
 		events as eventsApi,
 		guests as guestsApi,
 		invites,
 		saveBlob
 	} from '$lib/api';
 	import type { BatchSendReport, Event, Guest, InviteChannel, RsvpStatus } from '$lib/api';
+	import { authStore } from '$lib/stores/auth.svelte';
 	import {
 		computeStats,
 		deleteMany,
@@ -26,6 +28,7 @@
 	import GuestFormDialog from '$lib/components/GuestFormDialog.svelte';
 	import CsvImportDialog from '$lib/components/CsvImportDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import LimitReachedDialog from '$lib/components/LimitReachedDialog.svelte';
 	import SendReportDialog from '$lib/components/SendReportDialog.svelte';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -79,6 +82,16 @@
 
 	function ask(title: string, description: string, label: string, action: () => void | Promise<void>) {
 		confirm = { open: true, title, description, label, action };
+	}
+
+	let showLimit = $state(false);
+	let limitMessage = $state('');
+	let contactEmail = $state('');
+
+	async function onLimit(message: string) {
+		limitMessage = message;
+		contactEmail = (await config.get().catch(() => ({ contact_email: '' }))).contact_email;
+		showLimit = true;
 	}
 
 	async function loadAll() {
@@ -181,7 +194,8 @@
 			quickAddName = '';
 			await refresh();
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : 'Could not add guest');
+			if (e instanceof ApiError && e.status === 402) onLimit(e.message);
+			else toast.error(e instanceof ApiError ? e.message : 'Could not add guest');
 		}
 	}
 
@@ -392,7 +406,20 @@
 {#if event}
 	<EventFormDialog bind:open={showEditEvent} {event} onsaved={(e) => (event = e)} />
 {/if}
-<GuestFormDialog bind:open={showGuestForm} {eventId} guest={editingGuest} onsaved={refresh} />
+<GuestFormDialog
+	bind:open={showGuestForm}
+	{eventId}
+	guest={editingGuest}
+	onsaved={refresh}
+	onlimit={onLimit}
+/>
+
+<LimitReachedDialog
+	bind:open={showLimit}
+	plan={authStore.user?.plan ?? 'free'}
+	{contactEmail}
+	message={limitMessage}
+/>
 <CsvImportDialog bind:open={showCsv} {eventId} onimported={refresh} />
 <ConfirmDialog
 	bind:open={confirm.open}

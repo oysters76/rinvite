@@ -34,11 +34,28 @@ impl UserRepository for InMemoryUserRepository {
         Ok(self.users.read().await.get(&id).cloned())
     }
 
+    async fn find_by_verification_token(
+        &self,
+        token: &str,
+    ) -> Result<Option<User>, DomainError> {
+        let users = self.users.read().await;
+        Ok(users
+            .values()
+            .find(|u| u.verification_token.as_deref() == Some(token))
+            .cloned())
+    }
+
     async fn save(&self, user: &User) -> Result<(), DomainError> {
         let mut users = self.users.write().await;
         if users.values().any(|u| u.email == user.email) {
             return Err(DomainError::EmailAlreadyExists);
         }
+        users.insert(user.id, user.clone());
+        Ok(())
+    }
+
+    async fn update(&self, user: &User) -> Result<(), DomainError> {
+        let mut users = self.users.write().await;
         users.insert(user.id, user.clone());
         Ok(())
     }

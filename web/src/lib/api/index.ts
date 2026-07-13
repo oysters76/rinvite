@@ -9,6 +9,8 @@ export {
 	saveBlob
 } from './client';
 export { auth } from './auth';
+export { billing } from './billing';
+export { config } from './config';
 export { events } from './events';
 export { guests } from './guests';
 export { invites } from './invites';

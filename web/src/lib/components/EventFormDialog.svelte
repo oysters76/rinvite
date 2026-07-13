@@ -10,8 +10,15 @@
 	let {
 		open = $bindable(false),
 		event = null,
-		onsaved
-	}: { open?: boolean; event?: Event | null; onsaved?: (e: Event) => void } = $props();
+		onsaved,
+		onlimit
+	}: {
+		open?: boolean;
+		event?: Event | null;
+		onsaved?: (e: Event) => void;
+		/** Called when the server rejects with a plan limit (HTTP 402). */
+		onlimit?: (message: string) => void;
+	} = $props();
 
 	const blank: CreateEvent = {
 		bride_name: '',
@@ -62,7 +69,13 @@
 			open = false;
 			onsaved?.(saved);
 		} catch (err2) {
-			toast.error(err2 instanceof ApiError ? err2.message : 'Could not save event');
+			// A plan limit (402) is handed to the parent to show the upgrade dialog.
+			if (err2 instanceof ApiError && err2.status === 402) {
+				open = false;
+				onlimit?.(err2.message);
+			} else {
+				toast.error(err2 instanceof ApiError ? err2.message : 'Could not save event');
+			}
 		} finally {
 			saving = false;
 		}
