@@ -1,5 +1,6 @@
 /target
 .env
+.claude
 
 # frontend (web/)
 web/node_modules/
