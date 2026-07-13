@@ -47,11 +47,9 @@ impl BillingService for BillingServiceImpl {
             .ok_or_else(|| DomainError::NotFound("user".to_owned()))?;
 
         let requested_at = self.clock.now().format("%Y-%m-%d %H:%M UTC").to_string();
-        let m = self.templates.render_upgrade_request(
-            &user.email,
-            user.plan.as_str(),
-            &requested_at,
-        );
+        let m =
+            self.templates
+                .render_upgrade_request(&user.email, user.plan.as_str(), &requested_at);
         self.email
             .send_email(&self.notify_email, &m.subject, &m.html, &m.text)
             .await

@@ -152,8 +152,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         clock.clone(),
         public_base_url.clone(),
     ));
-    let invites: Arc<dyn InviteService> =
-        Arc::new(InviteServiceImpl::new(events_repo, guests_repo, clock.clone()));
+    let invites: Arc<dyn InviteService> = Arc::new(InviteServiceImpl::new(
+        events_repo,
+        guests_repo,
+        clock.clone(),
+    ));
     let billing: Arc<dyn BillingService> = Arc::new(BillingServiceImpl::new(
         users,
         email,

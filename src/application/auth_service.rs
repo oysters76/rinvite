@@ -212,9 +212,7 @@ mod tests {
         }
     }
 
-    fn service(
-        clock: FixedClock,
-    ) -> (AuthServiceImpl, Arc<InMemoryUserRepository>, Arc<SpyEmail>) {
+    fn service(clock: FixedClock) -> (AuthServiceImpl, Arc<InMemoryUserRepository>, Arc<SpyEmail>) {
         let users = Arc::new(InMemoryUserRepository::new());
         let email = Arc::new(SpyEmail::default());
         let svc = AuthServiceImpl::new(
@@ -270,7 +268,10 @@ mod tests {
             .verification_token
             .unwrap();
         svc.verify_email(&token).await.unwrap();
-        assert_eq!(svc.login("a@b.com", "password1").await.unwrap().value, "jwt");
+        assert_eq!(
+            svc.login("a@b.com", "password1").await.unwrap().value,
+            "jwt"
+        );
     }
 
     #[tokio::test]

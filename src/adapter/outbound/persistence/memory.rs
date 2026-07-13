@@ -34,10 +34,7 @@ impl UserRepository for InMemoryUserRepository {
         Ok(self.users.read().await.get(&id).cloned())
     }
 
-    async fn find_by_verification_token(
-        &self,
-        token: &str,
-    ) -> Result<Option<User>, DomainError> {
+    async fn find_by_verification_token(&self, token: &str) -> Result<Option<User>, DomainError> {
         let users = self.users.read().await;
         Ok(users
             .values()

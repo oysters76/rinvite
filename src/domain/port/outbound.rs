@@ -16,10 +16,7 @@ pub trait UserRepository: Send + Sync {
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, DomainError>;
     async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, DomainError>;
     /// Look up the user holding an outstanding email-verification token.
-    async fn find_by_verification_token(
-        &self,
-        token: &str,
-    ) -> Result<Option<User>, DomainError>;
+    async fn find_by_verification_token(&self, token: &str) -> Result<Option<User>, DomainError>;
     async fn save(&self, user: &User) -> Result<(), DomainError>;
     /// Persist changes to an existing user (verification state, plan, ...).
     async fn update(&self, user: &User) -> Result<(), DomainError>;

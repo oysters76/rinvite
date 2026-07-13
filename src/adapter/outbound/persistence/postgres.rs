@@ -68,10 +68,7 @@ impl UserRepository for PostgresUserRepository {
         row.as_ref().map(row_to_user).transpose()
     }
 
-    async fn find_by_verification_token(
-        &self,
-        token: &str,
-    ) -> Result<Option<User>, DomainError> {
+    async fn find_by_verification_token(&self, token: &str) -> Result<Option<User>, DomainError> {
         let row = sqlx::query(
             "SELECT id, email, password_hash, plan, email_verified, verification_token, \
              verification_expires_at FROM users WHERE verification_token = $1",
