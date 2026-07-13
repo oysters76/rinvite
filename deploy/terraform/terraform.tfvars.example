@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is git-ignored.
+#
+# Tip: instead of putting the token here, export it:
+#   export DIGITALOCEAN_TOKEN=dop_v1_xxx    # the DO provider reads this too
+# in which case you can leave do_token out (it still must be declared, so set it
+# to the same value or use an env var TF_VAR_do_token).
+
+do_token    = "dop_v1_your_token_here"
+root_domain = "example.com"
+
+# Optional — sensible defaults exist for all of these:
+# region                = "nyc3"
+# github_repo           = "oysters76/rinvite"
+# github_branch         = "master"
+# service_instance_size = "basic-xxs"
+# db_size               = "db-s-1vcpu-1gb"
+# db_version            = "16"
+
+# ---- Optional e-invite delivery (leave blank to log invites instead of send) --
+# resend_api_key       = "re_xxx"
+# email_from           = "Rinvite <invites@example.com>"
+# twilio_account_sid   = "ACxxx"
+# twilio_auth_token    = "xxx"
+# twilio_whatsapp_from = "+14155238886"
+# twilio_content_sid   = "HXxxx"   # required for production WhatsApp templates

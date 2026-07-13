@@ -183,6 +183,20 @@ docker compose up --build
 Compose brings up Postgres with a persistent volume and waits for it to be
 healthy before starting the app. Database migrations run automatically on boot.
 
+### Option C — DigitalOcean via Terraform (backend + frontend + DB + custom domain)
+
+Reproducible one‑command deploy of the whole stack (API, static web app, managed
+Postgres, DNS, and automatic TLS on your custom domain) to DigitalOcean App
+Platform:
+
+```bash
+cd deploy/terraform
+cp terraform.tfvars.example terraform.tfvars   # set do_token + root_domain
+terraform init && terraform apply
+```
+
+See [deploy/terraform/README.md](deploy/terraform/README.md) for the full runbook
+
 ### Production checklist
 
 - **Set a strong `JWT_SECRET`** (32+ random bytes) and keep it out of version control.

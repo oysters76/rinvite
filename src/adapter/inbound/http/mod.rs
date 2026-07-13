@@ -44,6 +44,9 @@ pub struct AppState {
 /// Compose every route group and apply the shared middleware.
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        // Liveness probe for load balancers / uptime monitors (App Platform
+        // health checks hit this). Public, no auth, no state.
+        .route("/health", axum::routing::get(|| async { "ok" }))
         .merge(auth::router())
         .merge(events::router())
         .merge(invites::router())

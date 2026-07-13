@@ -1,0 +1,11 @@
+# Local state contains secrets (DB URI, JWT secret) — never commit it.
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Your real variable values / secrets.
+terraform.tfvars
+*.auto.tfvars
+
+# Note: .terraform.lock.hcl is intentionally NOT ignored — commit it so provider
+# versions are pinned and reproducible.

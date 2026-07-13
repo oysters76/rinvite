@@ -3,9 +3,12 @@ FROM rust:1-slim-bookworm AS builder
 WORKDIR /app
 
 # Copy only what the build needs (see .dockerignore for what's excluded).
+# `assets/` is required at *compile* time: html.rs and message/mod.rs embed the
+# e-invite and message templates via `include_str!` relative to CARGO_MANIFEST_DIR.
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY migrations ./migrations
+COPY assets ./assets
 
 RUN cargo build --release
 
@@ -17,7 +20,15 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
+WORKDIR /app
 COPY --from=builder /app/target/release/rinvite /usr/local/bin/rinvite
+# The branded print PDF reads the card image + TTF fonts at *runtime* from the
+# relative paths in assets/pdf-config.json. Ship them and point PDF_CONFIG at
+# the config so the PDF renders the floral-gold card instead of a plain fallback.
+# CWD /app makes the config's relative asset paths resolve; the files are
+# world-readable, so USER 1000 can read them.
+COPY --from=builder /app/assets ./assets
+ENV PDF_CONFIG=/app/assets/pdf-config.json
 
 EXPOSE 3000
 # Run as a non-root user.
