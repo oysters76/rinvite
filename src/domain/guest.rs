@@ -3,6 +3,18 @@ use uuid::Uuid;
 
 use super::error::DomainError;
 
+/// A short, URL-safe, unguessable invite token (12 base62 chars ≈ 71 bits).
+fn short_token() -> String {
+    const ALPHABET: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    let mut n = Uuid::new_v4().as_u128();
+    let mut out = [0u8; 12];
+    for slot in &mut out {
+        *slot = ALPHABET[(n % 62) as usize];
+        n /= 62;
+    }
+    String::from_utf8(out.to_vec()).expect("base62 is valid ASCII")
+}
+
 /// How a guest is invited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InviteChannel {
@@ -115,9 +127,9 @@ impl Guest {
             email: details.email,
             phone: details.phone,
             max_party_size: details.max_party_size,
-            // Two v4 UUIDs give ~244 bits of entropy — plenty to keep the
-            // invite link unguessable.
-            invite_token: format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple()),
+            // A short base62 slug — ~71 bits of entropy, unguessable, and it
+            // keeps invite links pretty (e.g. /i/Xa9bK2mQ7fLp).
+            invite_token: short_token(),
             rsvp_status: RsvpStatus::Pending,
             party_size: None,
             responded_at: None,
@@ -210,6 +222,18 @@ mod tests {
     }
     fn deadline() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 12, 1).unwrap()
+    }
+
+    #[test]
+    fn invite_token_is_short_url_safe_and_unique() {
+        let a = guest(2).invite_token;
+        let b = guest(2).invite_token;
+        assert_ne!(a, b, "tokens must be unguessably unique");
+        assert_eq!(a.len(), 12, "token stays short and pretty");
+        assert!(
+            a.chars().all(|c| c.is_ascii_alphanumeric()),
+            "token is URL-safe (base62): {a}"
+        );
     }
 
     #[test]

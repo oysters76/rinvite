@@ -77,10 +77,29 @@ pub trait Clock: Send + Sync {
     fn now(&self) -> DateTime<Utc>;
 }
 
-/// Delivery seam for e-invites. Only a no-op adapter implements this today;
-/// a real WhatsApp/email/bulk sender slots in here later without touching the
-/// core.
+/// Delivery seam for e-invites. Implemented by a dispatcher that routes each
+/// guest to WhatsApp or email; the event is passed so adapters can render rich
+/// messages (couple, date, venue).
 #[async_trait]
 pub trait InviteSender: Send + Sync {
-    async fn send(&self, guest: &Guest, invite_url: &str) -> Result<(), DomainError>;
+    async fn send(&self, event: &Event, guest: &Guest, invite_url: &str)
+    -> Result<(), DomainError>;
+}
+
+/// Sends a transactional email (HTML + plain-text alternative).
+#[async_trait]
+pub trait EmailClient: Send + Sync {
+    async fn send_email(
+        &self,
+        to: &str,
+        subject: &str,
+        html: &str,
+        text: &str,
+    ) -> Result<(), DomainError>;
+}
+
+/// Sends a WhatsApp message body to a phone number.
+#[async_trait]
+pub trait WhatsAppClient: Send + Sync {
+    async fn send_whatsapp(&self, to_phone: &str, body: &str) -> Result<(), DomainError>;
 }

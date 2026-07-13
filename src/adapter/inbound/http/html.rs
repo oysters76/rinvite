@@ -95,7 +95,7 @@ pub fn render_invite_page(template: &str, view: &InviteView, token: &str) -> Str
             e.event_date.format("%B %Y")
         ),
         rsvp: RsvpData {
-            endpoint: format!("/invite/{token}/rsvp"),
+            endpoint: format!("/i/{token}/rsvp"),
             max_party_size: view.max_party_size,
             status: view.rsvp_status.as_str().to_owned(),
             party_size: view.party_size,

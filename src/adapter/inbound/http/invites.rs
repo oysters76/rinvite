@@ -11,6 +11,10 @@ use super::{ApiError, AppState};
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        // Pretty short links (used in emails/WhatsApp); the `/invite/…` paths
+        // are kept as aliases for backwards compatibility.
+        .route("/i/{token}", get(view))
+        .route("/i/{token}/rsvp", axum::routing::post(rsvp))
         .route("/invite/{token}", get(view))
         .route("/invite/{token}/rsvp", axum::routing::post(rsvp))
 }

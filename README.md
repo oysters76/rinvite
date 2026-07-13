@@ -140,8 +140,27 @@ All configuration is via environment variables:
 | `CORS_ALLOWED_ORIGINS` | | *(any origin)* | Comma‑separated allowlist for a browser frontend. Unset allows any origin (safe — auth is Bearer‑token, no cookies). |
 | `PDF_CONFIG` | | *(plain page)* | Path to the PDF layout JSON (see [Customizing the PDF](#-customizing-the-pdf)). Unset → a plain text‑only fallback. |
 | `EINVITE_TEMPLATE` | | *(embedded)* | Path to a custom e‑invite HTML template. Unset → the built‑in [`assets/einvite/template.html`](assets/einvite/template.html). |
+| `RESEND_API_KEY` | | *(log‑only)* | [Resend](https://resend.com) API key. With `EMAIL_FROM`, e‑invite emails are actually sent; unset → logged to the console. |
+| `EMAIL_FROM` | | — | Sender for emails, e.g. `Rinvite <invites@your-domain>`. |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | | *(log‑only)* | [Twilio WhatsApp](https://www.twilio.com/docs/whatsapp) credentials + sender (E.164, e.g. `+14155238886`). All three set → WhatsApp messages are sent; otherwise logged. |
+| `TWILIO_CONTENT_SID` | | *(freeform)* | A Meta‑approved template's ContentSid. **Required for production** business‑initiated WhatsApp (freeform text only works in Twilio's sandbox / a 24h session window). |
+| `EMAIL_TEMPLATE_HTML` / `EMAIL_TEMPLATE_TEXT` / `EMAIL_SUBJECT` / `WHATSAPP_TEMPLATE` | | *(embedded)* | Paths to override the built‑in message templates in [`assets/messages/`](assets/messages/). |
 
 The server listens on **port 3000**.
+
+### E‑invite delivery (WhatsApp + email)
+
+When you send an e‑invite guest their link, Rinvite routes it automatically:
+**a guest with a phone gets WhatsApp**, otherwise **email**. The message is
+built from the editable templates in [`assets/messages/`](assets/messages/)
+(`email.html`, `email.txt`, `email-subject.txt`, `whatsapp.txt`), each supporting
+placeholders `{guest_name} {couple} {bride_name} {groom_name} {date} {time}
+{venue} {hall} {rsvp_by} {invite_url}`. Links are short and pretty —
+`{PUBLIC_BASE_URL}/i/<token>`.
+
+**No provider keys?** No problem — delivery falls back to logging the message
+(with the link) to the server console, so the dashboard's **Send** works in local
+dev without any Resend/Twilio account.
 
 ---
 
@@ -282,8 +301,8 @@ cargo fmt --all --check
 
 Planned enhancements (contributions welcome!):
 
-- Real e‑invite delivery adapters (WhatsApp / email) behind the existing `InviteSender` port
-- JSON variant of `GET /invite/{token}` for frontends that render their own invite
+- WhatsApp opt‑out (STOP) handling, per‑guest `sent_at` tracking, and a retry queue for very large batches
+- JSON variant of `GET /i/{token}` for frontends that render their own invite
 - RSVP summary/aggregates, pagination, and a `/health` endpoint
 - Rate limiting on auth, structured logging, and an OpenAPI spec
 - JWT refresh tokens

@@ -1,6 +1,9 @@
 pub mod argon2_hasher;
 pub mod clock;
+pub mod dispatch_sender;
+pub mod email;
 pub mod jwt_issuer;
-pub mod manual_sender;
+pub mod message;
 pub mod pdf;
 pub mod persistence;
+pub mod whatsapp;

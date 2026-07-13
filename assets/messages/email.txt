@@ -1,0 +1,17 @@
+You're invited — {couple}
+
+Dear {guest_name},
+
+We would be honoured by your presence as we celebrate our wedding.
+
+  {date}
+  {time}
+  {hall}, {venue}
+
+View your invitation and RSVP here:
+{invite_url}
+
+Kindly RSVP by {rsvp_by}.
+
+With love,
+{couple}

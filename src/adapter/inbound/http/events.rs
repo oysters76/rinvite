@@ -139,7 +139,7 @@ struct GuestResponse {
 }
 
 fn guest_response(g: Guest, base_url: &str) -> GuestResponse {
-    let invite_url = format!("{base_url}/invite/{}", g.invite_token);
+    let invite_url = format!("{base_url}/i/{}", g.invite_token);
     GuestResponse {
         id: g.id,
         name: g.name,

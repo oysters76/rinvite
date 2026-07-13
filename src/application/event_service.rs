@@ -169,10 +169,10 @@ impl EventService for EventServiceImpl {
         event_id: Uuid,
         guest_id: Uuid,
     ) -> Result<String, DomainError> {
-        self.owned_event(owner_id, event_id).await?; // ownership gate
+        let event = self.owned_event(owner_id, event_id).await?; // ownership gate
         let guest = self.guest_of(event_id, guest_id).await?;
-        let invite_url = format!("{}/invite/{}", self.public_base_url, guest.invite_token);
-        self.sender.send(&guest, &invite_url).await?;
+        let invite_url = format!("{}/i/{}", self.public_base_url, guest.invite_token);
+        self.sender.send(&event, &guest, &invite_url).await?;
         Ok(invite_url)
     }
 
@@ -202,7 +202,7 @@ impl EventService for EventServiceImpl {
         owner_id: Uuid,
         event_id: Uuid,
     ) -> Result<BatchSendReport, DomainError> {
-        self.owned_event(owner_id, event_id).await?; // ownership gate
+        let event = self.owned_event(owner_id, event_id).await?; // ownership gate
         let einvite_guests: Vec<Guest> = self
             .guests
             .list_by_event(event_id)
@@ -216,8 +216,8 @@ impl EventService for EventServiceImpl {
         // Sequential: one guest at a time, and a single failure never aborts
         // the batch.
         for guest in &einvite_guests {
-            let url = format!("{}/invite/{}", self.public_base_url, guest.invite_token);
-            let (status, detail) = match self.sender.send(guest, &url).await {
+            let url = format!("{}/i/{}", self.public_base_url, guest.invite_token);
+            let (status, detail) = match self.sender.send(&event, guest, &url).await {
                 Ok(()) => {
                     sent += 1;
                     (SendStatus::Sent, None)
@@ -271,7 +271,7 @@ mod tests {
     struct FlakySender;
     #[async_trait]
     impl InviteSender for FlakySender {
-        async fn send(&self, guest: &Guest, _url: &str) -> Result<(), DomainError> {
+        async fn send(&self, _event: &Event, guest: &Guest, _url: &str) -> Result<(), DomainError> {
             if guest.name == "boom" {
                 Err(DomainError::Repository("smtp down".to_owned()))
             } else {
