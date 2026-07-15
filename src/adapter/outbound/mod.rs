@@ -6,4 +6,5 @@ pub mod jwt_issuer;
 pub mod message;
 pub mod pdf;
 pub mod persistence;
+pub mod sms;
 pub mod whatsapp;

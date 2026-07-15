@@ -5,17 +5,22 @@ use async_trait::async_trait;
 use crate::domain::error::DomainError;
 use crate::domain::event::Event;
 use crate::domain::guest::{Guest, InviteChannel};
-use crate::domain::port::outbound::{EmailClient, InviteSender, WhatsAppClient};
+use crate::domain::port::outbound::{EmailClient, InviteSender, SmsClient, WhatsAppClient};
 
 use super::message::MessageTemplates;
 
-/// Routes an e-invite to a real channel. Prefers WhatsApp when the guest has a
+/// Routes an e-invite to a real channel. Prefers SMS when the guest has a
 /// phone, otherwise email; a guest with neither is an error (surfaced as a
 /// failed row in the send report). Non-e-invite guests are skipped (they get a
-/// printed card, not a message).
+/// printed card, not a message). The WhatsApp client is retained but currently
+/// unused — phone delivery goes over SMS.
 pub struct DispatchSender {
     email: Arc<dyn EmailClient>,
+    /// Retained so WhatsApp delivery can be re-enabled without re-wiring; phone
+    /// delivery currently routes through `sms`.
+    #[allow(dead_code)]
     whatsapp: Arc<dyn WhatsAppClient>,
+    sms: Arc<dyn SmsClient>,
     templates: MessageTemplates,
 }
 
@@ -23,11 +28,13 @@ impl DispatchSender {
     pub fn new(
         email: Arc<dyn EmailClient>,
         whatsapp: Arc<dyn WhatsAppClient>,
+        sms: Arc<dyn SmsClient>,
         templates: MessageTemplates,
     ) -> Self {
         Self {
             email,
             whatsapp,
+            sms,
             templates,
         }
     }
@@ -50,8 +57,8 @@ impl InviteSender for DispatchSender {
         }
 
         if let Some(phone) = non_empty(&guest.phone) {
-            let body = self.templates.render_whatsapp(event, guest, invite_url);
-            return self.whatsapp.send_whatsapp(phone, &body).await;
+            let body = self.templates.render_sms(event, guest, invite_url);
+            return self.sms.send_sms(phone, &body).await;
         }
 
         if let Some(email) = non_empty(&guest.email) {
@@ -82,6 +89,7 @@ mod tests {
     struct Spy {
         emails: Mutex<Vec<String>>,
         whatsapps: Mutex<Vec<String>>,
+        smses: Mutex<Vec<String>>,
     }
 
     #[async_trait]
@@ -102,6 +110,14 @@ mod tests {
     impl WhatsAppClient for Spy {
         async fn send_whatsapp(&self, to: &str, _b: &str) -> Result<(), DomainError> {
             self.whatsapps.lock().unwrap().push(to.to_owned());
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl SmsClient for Spy {
+        async fn send_sms(&self, to: &str, _b: &str) -> Result<(), DomainError> {
+            self.smses.lock().unwrap().push(to.to_owned());
             Ok(())
         }
     }
@@ -144,18 +160,20 @@ mod tests {
     fn sender(spy: Arc<Spy>) -> DispatchSender {
         DispatchSender::new(
             spy.clone(),
+            spy.clone(),
             spy,
             MessageTemplates::from_env().expect("templates load"),
         )
     }
 
     #[tokio::test]
-    async fn phone_routes_to_whatsapp_even_with_email() {
+    async fn phone_routes_to_sms_even_with_email() {
         let spy = Arc::new(Spy::default());
         let e = event();
         let g = guest(e.id, Some("g@x.com"), Some("+94771234567"));
         sender(spy.clone()).send(&e, &g, "u").await.unwrap();
-        assert_eq!(spy.whatsapps.lock().unwrap().len(), 1);
+        assert_eq!(spy.smses.lock().unwrap().len(), 1);
+        assert_eq!(spy.whatsapps.lock().unwrap().len(), 0);
         assert_eq!(spy.emails.lock().unwrap().len(), 0);
     }
 

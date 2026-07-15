@@ -1,0 +1,7 @@
+You're invited to {couple}'s wedding!
+
+{date}, {time}
+{hall}, {venue}
+
+Invitation & RSVP: {invite_url}
+Please RSVP by {rsvp_by}.

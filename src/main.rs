@@ -20,6 +20,8 @@ use adapter::outbound::persistence::events_memory::InMemoryEventStore;
 use adapter::outbound::persistence::events_postgres::PostgresEventStore;
 use adapter::outbound::persistence::memory::InMemoryUserRepository;
 use adapter::outbound::persistence::postgres::PostgresUserRepository;
+use adapter::outbound::sms::log::LogSmsClient;
+use adapter::outbound::sms::twilio::TwilioSms;
 use adapter::outbound::whatsapp::log::LogWhatsAppClient;
 use adapter::outbound::whatsapp::twilio::TwilioWhatsApp;
 use application::auth_service::AuthServiceImpl;
@@ -29,7 +31,7 @@ use application::invite_service::InviteServiceImpl;
 use domain::port::inbound::{AuthService, BillingService, EventService, InviteService};
 use domain::port::outbound::{
     Clock, EmailClient, EventRepository, GuestRepository, InvitePdfRenderer, InviteSender,
-    PasswordHasher, TokenIssuer, TokenVerifier, UserRepository, WhatsAppClient,
+    PasswordHasher, SmsClient, TokenIssuer, TokenVerifier, UserRepository, WhatsAppClient,
 };
 
 #[tokio::main]
@@ -92,9 +94,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(LogWhatsAppClient)
         }
     };
+    let sms: Arc<dyn SmsClient> = match (
+        std::env::var("TWILIO_ACCOUNT_SID"),
+        std::env::var("TWILIO_AUTH_TOKEN"),
+        std::env::var("TWILIO_SMS_FROM"),
+    ) {
+        (Ok(sid), Ok(token), Ok(from)) if !sid.is_empty() => {
+            Arc::new(TwilioSms::new(sid, token, from))
+        }
+        _ => {
+            eprintln!(
+                "[startup] TWILIO_*/TWILIO_SMS_FROM unset — SMS messages will be logged, not sent"
+            );
+            Arc::new(LogSmsClient)
+        }
+    };
     let sender: Arc<dyn InviteSender> = Arc::new(DispatchSender::new(
         email.clone(),
         whatsapp,
+        sms,
         MessageTemplates::from_env()?,
     ));
 

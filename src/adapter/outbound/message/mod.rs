@@ -23,6 +23,10 @@ const DEFAULT_WHATSAPP: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/messages/whatsapp.txt"
 ));
+const DEFAULT_SMS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/messages/sms.txt"
+));
 
 pub struct RenderedEmail {
     pub subject: String,
@@ -36,7 +40,10 @@ pub struct MessageTemplates {
     email_html: String,
     email_text: String,
     email_subject: String,
+    /// Retained for future WhatsApp re-enable; phone delivery uses `sms`.
+    #[allow(dead_code)]
     whatsapp: String,
+    sms: String,
 }
 
 impl MessageTemplates {
@@ -46,6 +53,7 @@ impl MessageTemplates {
             email_text: load("EMAIL_TEMPLATE_TEXT", DEFAULT_EMAIL_TEXT)?,
             email_subject: load("EMAIL_SUBJECT", DEFAULT_EMAIL_SUBJECT)?,
             whatsapp: load("WHATSAPP_TEMPLATE", DEFAULT_WHATSAPP)?,
+            sms: load("SMS_TEMPLATE", DEFAULT_SMS)?,
         })
     }
 
@@ -58,8 +66,13 @@ impl MessageTemplates {
         }
     }
 
+    #[allow(dead_code)]
     pub fn render_whatsapp(&self, event: &Event, guest: &Guest, invite_url: &str) -> String {
         fill(&self.whatsapp, &build_vars(event, guest, invite_url), false)
+    }
+
+    pub fn render_sms(&self, event: &Event, guest: &Guest, invite_url: &str) -> String {
+        fill(&self.sms, &build_vars(event, guest, invite_url), false)
     }
 }
 
@@ -181,6 +194,7 @@ mod tests {
             email_text: "{couple} {invite_url}".into(),
             email_subject: " {couple} \n".into(),
             whatsapp: "Hi {guest_name}, {date}, {invite_url}".into(),
+            sms: "RSVP {guest_name}: {invite_url}".into(),
         };
         let url = "https://x/i/AbC123";
         let email = t.render_email(&e, &g, url);
@@ -193,5 +207,8 @@ mod tests {
         assert!(wa.contains("Ravi <b>")); // not escaped in plain text
         assert!(wa.contains("25 September 2026"));
         assert!(wa.contains(url));
+        let sms = t.render_sms(&e, &g, url);
+        assert!(sms.contains("Ravi <b>")); // not escaped in plain text
+        assert!(sms.contains(url));
     }
 }

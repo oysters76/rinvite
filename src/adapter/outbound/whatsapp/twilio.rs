@@ -10,6 +10,7 @@ use crate::domain::port::outbound::WhatsAppClient;
 /// business-initiated production messages set `content_sid` (a Meta-approved
 /// template); the adapter then sends template mode, passing the rendered body as
 /// content variable `1`.
+#[allow(dead_code)] // retained for future WhatsApp re-enable; phone uses SMS
 pub struct TwilioWhatsApp {
     http: reqwest::Client,
     account_sid: String,

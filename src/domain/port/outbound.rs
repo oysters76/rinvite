@@ -102,8 +102,16 @@ pub trait EmailClient: Send + Sync {
     ) -> Result<(), DomainError>;
 }
 
-/// Sends a WhatsApp message body to a phone number.
+/// Sends a WhatsApp message body to a phone number. Retained for future
+/// re-enable; phone delivery currently routes through [`SmsClient`].
 #[async_trait]
 pub trait WhatsAppClient: Send + Sync {
+    #[allow(dead_code)]
     async fn send_whatsapp(&self, to_phone: &str, body: &str) -> Result<(), DomainError>;
+}
+
+/// Sends an SMS message body to a phone number.
+#[async_trait]
+pub trait SmsClient: Send + Sync {
+    async fn send_sms(&self, to_phone: &str, body: &str) -> Result<(), DomainError>;
 }
