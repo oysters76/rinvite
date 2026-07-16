@@ -23,3 +23,8 @@ root_domain = "example.com"
 # twilio_auth_token    = "xxx"
 # twilio_whatsapp_from = "+14155238886"
 # twilio_content_sid   = "HXxxx"   # required for production WhatsApp templates
+# twilio_sms_from      = "+14155238886"   # SMS-capable sender; empty = SMS log-only
+
+# ---- Optional contact addresses (leave blank to use built-in defaults) --------
+# business_contact_email = "hello@example.com"
+# upgrade_notify_email   = "hello@example.com"

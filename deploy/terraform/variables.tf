@@ -88,3 +88,23 @@ variable "twilio_content_sid" {
   default     = ""
   sensitive   = true
 }
+
+variable "twilio_sms_from" {
+  description = "SMS-capable Twilio sender in E.164, e.g. +14155238886. Reuses twilio_account_sid/twilio_auth_token above. Empty = SMS log-only."
+  type        = string
+  default     = ""
+}
+
+# ---- Optional contact addresses --------------------------------------------
+
+variable "business_contact_email" {
+  description = "Contact shown to users in the plan \"limit reached\" dialog. Empty = the app's built-in default."
+  type        = string
+  default     = ""
+}
+
+variable "upgrade_notify_email" {
+  description = "Where plan upgrade-request notifications are delivered. Empty = falls back to business_contact_email."
+  type        = string
+  default     = ""
+}
