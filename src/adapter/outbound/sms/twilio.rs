@@ -7,6 +7,7 @@ use crate::domain::port::outbound::SmsClient;
 /// resource with HTTP basic auth. Shares the Twilio account with the WhatsApp
 /// adapter; the only differences are the sender number and the lack of a
 /// `whatsapp:` prefix / Meta content template.
+#[allow(dead_code)] // retained for future SMS re-enable; phone uses WhatsApp
 pub struct TwilioSms {
     http: reqwest::Client,
     account_sid: String,

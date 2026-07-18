@@ -40,9 +40,9 @@ pub struct MessageTemplates {
     email_html: String,
     email_text: String,
     email_subject: String,
-    /// Retained for future WhatsApp re-enable; phone delivery uses `sms`.
-    #[allow(dead_code)]
     whatsapp: String,
+    /// Retained for future SMS re-enable; phone delivery uses `whatsapp`.
+    #[allow(dead_code)]
     sms: String,
 }
 
@@ -71,6 +71,7 @@ impl MessageTemplates {
         fill(&self.whatsapp, &build_vars(event, guest, invite_url), false)
     }
 
+    #[allow(dead_code)] // retained for future SMS re-enable; phone uses WhatsApp
     pub fn render_sms(&self, event: &Event, guest: &Guest, invite_url: &str) -> String {
         fill(&self.sms, &build_vars(event, guest, invite_url), false)
     }

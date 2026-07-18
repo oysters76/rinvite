@@ -113,5 +113,7 @@ pub trait WhatsAppClient: Send + Sync {
 /// Sends an SMS message body to a phone number.
 #[async_trait]
 pub trait SmsClient: Send + Sync {
+    // Retained for future SMS re-enable; phone delivery currently routes over WhatsApp.
+    #[allow(dead_code)]
     async fn send_sms(&self, to_phone: &str, body: &str) -> Result<(), DomainError>;
 }

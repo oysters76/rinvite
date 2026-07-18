@@ -9,17 +9,17 @@ use crate::domain::port::outbound::{EmailClient, InviteSender, SmsClient, WhatsA
 
 use super::message::MessageTemplates;
 
-/// Routes an e-invite to a real channel. Prefers SMS when the guest has a
+/// Routes an e-invite to a real channel. Prefers WhatsApp when the guest has a
 /// phone, otherwise email; a guest with neither is an error (surfaced as a
 /// failed row in the send report). Non-e-invite guests are skipped (they get a
-/// printed card, not a message). The WhatsApp client is retained but currently
-/// unused — phone delivery goes over SMS.
+/// printed card, not a message). The SMS client is retained but currently
+/// unused — phone delivery goes over WhatsApp.
 pub struct DispatchSender {
     email: Arc<dyn EmailClient>,
-    /// Retained so WhatsApp delivery can be re-enabled without re-wiring; phone
-    /// delivery currently routes through `sms`.
-    #[allow(dead_code)]
     whatsapp: Arc<dyn WhatsAppClient>,
+    /// Retained so SMS delivery can be re-enabled without re-wiring; phone
+    /// delivery currently routes through `whatsapp`.
+    #[allow(dead_code)]
     sms: Arc<dyn SmsClient>,
     templates: MessageTemplates,
 }
@@ -57,8 +57,8 @@ impl InviteSender for DispatchSender {
         }
 
         if let Some(phone) = non_empty(&guest.phone) {
-            let body = self.templates.render_sms(event, guest, invite_url);
-            return self.sms.send_sms(phone, &body).await;
+            let body = self.templates.render_whatsapp(event, guest, invite_url);
+            return self.whatsapp.send_whatsapp(phone, &body).await;
         }
 
         if let Some(email) = non_empty(&guest.email) {
@@ -167,13 +167,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn phone_routes_to_sms_even_with_email() {
+    async fn phone_routes_to_whatsapp_even_with_email() {
         let spy = Arc::new(Spy::default());
         let e = event();
         let g = guest(e.id, Some("g@x.com"), Some("+94771234567"));
         sender(spy.clone()).send(&e, &g, "u").await.unwrap();
-        assert_eq!(spy.smses.lock().unwrap().len(), 1);
-        assert_eq!(spy.whatsapps.lock().unwrap().len(), 0);
+        assert_eq!(spy.whatsapps.lock().unwrap().len(), 1);
+        assert_eq!(spy.smses.lock().unwrap().len(), 0);
         assert_eq!(spy.emails.lock().unwrap().len(), 0);
     }
 
