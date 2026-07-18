@@ -6,6 +6,7 @@
 	import ChannelBadge from './ChannelBadge.svelte';
 	import RsvpBadge from './RsvpBadge.svelte';
 	import { ArrowDown, ArrowUp, Download, Mail, Pencil, Repeat, Trash2 } from '@lucide/svelte';
+	import Loader2 from '@lucide/svelte/icons/loader-2';
 
 	let {
 		guests,
@@ -30,14 +31,24 @@
 		onToggle: (id: string) => void;
 		onToggleAll: () => void;
 		onSort: (key: SortKey) => void;
-		onSend: (g: Guest) => void;
-		onDownload: (g: Guest) => void;
-		onMove: (g: Guest) => void;
+		onSend: (g: Guest) => void | Promise<void>;
+		onDownload: (g: Guest) => void | Promise<void>;
+		onMove: (g: Guest) => void | Promise<void>;
 		onEdit: (g: Guest) => void;
 		onDelete: (g: Guest) => void;
 	} = $props();
 
 	const isSelected = (id: string) => selectedIds.includes(id);
+
+	let busy = $state<Record<string, boolean>>({});
+	async function run(key: string, fn: () => void | Promise<void>) {
+		busy[key] = true;
+		try {
+			await fn();
+		} finally {
+			busy[key] = false;
+		}
+	}
 </script>
 
 {#snippet sortArrow(key: SortKey)}
@@ -53,7 +64,10 @@
 				<Checkbox checked={allSelected} onCheckedChange={onToggleAll} aria-label="Select all" />
 			</Table.Head>
 			<Table.Head>
-				<button class="inline-flex items-center gap-1 hover:text-primary" onclick={() => onSort('name')}>
+				<button
+					class="inline-flex items-center gap-1 hover:text-primary"
+					onclick={() => onSort('name')}
+				>
 					Name {@render sortArrow('name')}
 				</button>
 			</Table.Head>
@@ -96,16 +110,39 @@
 				<Table.Cell>
 					<div class="flex gap-0.5">
 						{#if g.channel === 'einvite'}
-							<button class="hover:bg-accent p-1.5" aria-label="Send" onclick={() => onSend(g)}>
-								<Mail class="size-4" />
+							{@const key = `send:${g.id}`}
+							<button
+								class="hover:bg-accent p-1.5 disabled:opacity-60"
+								aria-label="Send"
+								disabled={busy[key]}
+								onclick={() => run(key, () => onSend(g))}
+							>
+								{#if busy[key]}<Loader2 class="size-4 animate-spin" />{:else}<Mail
+										class="size-4"
+									/>{/if}
 							</button>
 						{:else}
-							<button class="hover:bg-accent p-1.5" aria-label="Download PDF" onclick={() => onDownload(g)}>
-								<Download class="size-4" />
+							{@const key = `download:${g.id}`}
+							<button
+								class="hover:bg-accent p-1.5 disabled:opacity-60"
+								aria-label="Download PDF"
+								disabled={busy[key]}
+								onclick={() => run(key, () => onDownload(g))}
+							>
+								{#if busy[key]}<Loader2 class="size-4 animate-spin" />{:else}<Download
+										class="size-4"
+									/>{/if}
 							</button>
 						{/if}
-						<button class="hover:bg-accent p-1.5" aria-label="Switch channel" onclick={() => onMove(g)}>
-							<Repeat class="size-4" />
+						<button
+							class="hover:bg-accent p-1.5 disabled:opacity-60"
+							aria-label="Switch channel"
+							disabled={busy[`move:${g.id}`]}
+							onclick={() => run(`move:${g.id}`, () => onMove(g))}
+						>
+							{#if busy[`move:${g.id}`]}<Loader2 class="size-4 animate-spin" />{:else}<Repeat
+									class="size-4"
+								/>{/if}
 						</button>
 						<button class="hover:bg-accent p-1.5" aria-label="Edit" onclick={() => onEdit(g)}>
 							<Pencil class="size-4" />
