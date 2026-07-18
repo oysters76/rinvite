@@ -96,6 +96,10 @@ const DEFAULT_H_MM: f32 = 210.0;
 ///   with the builtin Times font so the endpoint still works out of the box.
 pub struct TemplatePdfRenderer {
     config: Option<LoadedConfig>,
+    /// Dev-only: when `PDF_CONFIG_RELOAD` is set, holds the `PDF_CONFIG` path so
+    /// the layout (and its image/fonts) is re-read on every render — letting you
+    /// tune `pdf-config.json` and see it with a plain repeated curl, no restart.
+    reload_path: Option<String>,
 }
 
 struct LoadedConfig {
@@ -108,11 +112,26 @@ struct LoadedConfig {
 
 impl TemplatePdfRenderer {
     pub fn from_env() -> Result<Self, DomainError> {
-        let config = match std::env::var("PDF_CONFIG") {
-            Ok(path) => Some(Self::load_config(&path)?),
-            Err(_) => None,
-        };
-        Ok(Self { config })
+        let path = std::env::var("PDF_CONFIG").ok().filter(|p| !p.is_empty());
+        // Dev hot-reload: any non-empty, non-"0" value re-reads the config each
+        // render. Off by default, so production keeps the startup-cached config.
+        let reload = std::env::var("PDF_CONFIG_RELOAD")
+            .ok()
+            .is_some_and(|v| !v.is_empty() && v != "0");
+        match (reload, path) {
+            (true, Some(p)) => Ok(Self {
+                config: None,
+                reload_path: Some(p),
+            }),
+            (_, Some(p)) => Ok(Self {
+                config: Some(Self::load_config(&p)?),
+                reload_path: None,
+            }),
+            (_, None) => Ok(Self {
+                config: None,
+                reload_path: None,
+            }),
+        }
     }
 
     fn load_config(path: &str) -> Result<LoadedConfig, DomainError> {
@@ -153,6 +172,12 @@ impl InvitePdfRenderer for TemplatePdfRenderer {
     }
 
     fn render_all(&self, event: &Event, guests: &[Guest]) -> Result<Vec<u8>, DomainError> {
+        // Dev hot-reload path: re-read the config (and its image/fonts) so edits
+        // to pdf-config.json are picked up without restarting the server.
+        if let Some(path) = &self.reload_path {
+            let cfg = Self::load_config(path)?;
+            return render_all_from_config(&cfg, event, guests);
+        }
         match &self.config {
             Some(cfg) => render_all_from_config(cfg, event, guests),
             None => render_all_plain(event, guests),

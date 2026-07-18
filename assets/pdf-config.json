@@ -9,24 +9,24 @@
     "caps": "assets/fonts/Cinzel-Variable.ttf"
   },
   "elements": [
-    { "template": "Mr. & Mrs. {bride_family_name}", "font": "serif", "size": 22, "x_mm": 75.85, "y_mm": 153, "align": "center", "color": [0.20, 0.15, 0.10] },
-    { "template": "Together with", "font": "script", "size": 20, "x_mm": 75.85, "y_mm": 145, "align": "center", "color": [0.72, 0.56, 0.22] },
-    { "template": "Mr. & Mrs. {groom_family_name}", "font": "serif", "size": 22, "x_mm": 75.85, "y_mm": 138, "align": "center", "color": [0.20, 0.15, 0.10] },
+    { "template": "Mr. & Mrs. {bride_family_name}", "font": "serif", "size": 22, "x_mm": 75.85, "y_mm": 180, "align": "center", "color": [0.20, 0.15, 0.10] },
+    { "template": "Together with", "font": "script", "size": 20, "x_mm": 75.85, "y_mm": 171, "align": "center", "color": [0.72, 0.56, 0.22] },
+    { "template": "Mr. & Mrs. {groom_family_name}", "font": "serif", "size": 22, "x_mm": 75.85, "y_mm": 162, "align": "center", "color": [0.20, 0.15, 0.10] },
 
-    { "template": "Request the honour of the presence of", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 129, "align": "center", "color": [0.25, 0.20, 0.14] },
-    { "template": "{guest_name}", "font": "script", "size": 24, "x_mm": 75.85, "y_mm": 121, "align": "center", "color": [0.72, 0.56, 0.22] },
-    { "template": "to celebrate the marriage of their beloved children", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 113, "align": "center", "color": [0.25, 0.20, 0.14] },
+    { "template": "Request the honour of the presence of", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 150, "align": "center", "color": [0.25, 0.20, 0.14] },
+    { "template": "{guest_name}", "font": "script", "size": 24, "x_mm": 75.85, "y_mm": 140, "align": "center", "color": [0.72, 0.56, 0.22] },
+    { "template": "to celebrate the marriage of their beloved children", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 132, "align": "center", "color": [0.25, 0.20, 0.14] },
 
-    { "template": "{bride_name}", "font": "script", "size": 40, "x_mm": 75.85, "y_mm": 103, "align": "center", "color": [0.72, 0.56, 0.22] },
-    { "template": "&", "font": "script", "size": 24, "x_mm": 75.85, "y_mm": 96, "align": "center", "color": [0.72, 0.56, 0.22] },
-    { "template": "{groom_name}", "font": "script", "size": 40, "x_mm": 75.85, "y_mm": 89, "align": "center", "color": [0.72, 0.56, 0.22] },
+    { "template": "{bride_name}", "font": "script", "size": 50, "x_mm": 75.85, "y_mm": 115, "align": "center", "color": [0.72, 0.56, 0.22] },
+    { "template": "&", "font": "script", "size": 24, "x_mm": 75.85, "y_mm": 105, "align": "center", "color": [0.72, 0.56, 0.22] },
+    { "template": "{groom_name}", "font": "script", "size": 50, "x_mm": 75.85, "y_mm": 92, "align": "center", "color": [0.72, 0.56, 0.22] },
 
-    { "template": "{day_name}", "font": "caps", "size": 13, "x_mm": 55, "y_mm": 79, "align": "right", "transform": "upper", "letter_spacing": 1.2, "color": [0.20, 0.15, 0.10] },
-    { "template": "{day}", "font": "serif", "size": 30, "x_mm": 75.85, "y_mm": 77, "align": "center", "color": [0.60, 0.46, 0.16] },
-    { "template": "{month}", "font": "caps", "size": 13, "x_mm": 97, "y_mm": 79, "align": "left", "transform": "upper", "letter_spacing": 1.2, "color": [0.20, 0.15, 0.10] },
-    { "template": "{year}", "font": "serif", "size": 15, "x_mm": 75.85, "y_mm": 66, "align": "center", "color": [0.60, 0.46, 0.16] },
+    { "template": "{day_name}", "font": "caps", "size": 13, "x_mm": 55, "y_mm": 78, "align": "right", "transform": "upper", "letter_spacing": 1.2, "color": [0.20, 0.15, 0.10] },
+    { "template": "{day}", "font": "serif", "size": 40, "x_mm": 74.85, "y_mm": 74, "align": "center", "color": [0.60, 0.46, 0.16] },
+    { "template": "{month}", "font": "caps", "size": 13, "x_mm": 92.5, "y_mm": 78, "align": "left", "transform": "upper", "letter_spacing": 1.2, "color": [0.20, 0.15, 0.10] },
+    { "template": "{year}", "font": "serif", "size": 15, "x_mm": 74.85, "y_mm": 64.4, "align": "center", "color": [0.60, 0.46, 0.16] },
 
-    { "template": "From {start_time} to {end_time}", "font": "serif", "size": 10.5, "x_mm": 75.85, "y_mm": 56.5, "align": "center", "color": [0.30, 0.22, 0.10] },
+    { "template": "From {start_time} to {end_time}", "font": "serif", "size": 10.5, "x_mm": 75.85, "y_mm": 58.5, "align": "center", "color": [0.30, 0.22, 0.10] },
 
     { "template": "At {hall_name}", "font": "serif_italic", "size": 16, "x_mm": 75.85, "y_mm": 46, "align": "center", "color": [0.20, 0.15, 0.10] },
     { "template": "{venue_name}", "font": "serif_italic", "size": 13, "x_mm": 75.85, "y_mm": 40, "align": "center", "color": [0.20, 0.15, 0.10] },
