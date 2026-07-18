@@ -23,8 +23,9 @@ pub struct AuthServiceImpl {
     email: Arc<dyn EmailClient>,
     clock: Arc<dyn Clock>,
     templates: AccountTemplates,
-    /// Base URL used to build the email-verification link.
-    public_base_url: String,
+    /// Frontend base URL used to build the email-verification link (the /verify
+    /// page is served by the web app, not the API).
+    frontend_base_url: String,
 }
 
 impl AuthServiceImpl {
@@ -35,7 +36,7 @@ impl AuthServiceImpl {
         email: Arc<dyn EmailClient>,
         clock: Arc<dyn Clock>,
         templates: AccountTemplates,
-        public_base_url: String,
+        frontend_base_url: String,
     ) -> Self {
         Self {
             users,
@@ -44,7 +45,7 @@ impl AuthServiceImpl {
             email,
             clock,
             templates,
-            public_base_url,
+            frontend_base_url,
         }
     }
 
@@ -53,7 +54,7 @@ impl AuthServiceImpl {
         let Some(token) = user.verification_token.as_deref() else {
             return Ok(());
         };
-        let verify_url = format!("{}/verify?token={}", self.public_base_url, token);
+        let verify_url = format!("{}/verify?token={}", self.frontend_base_url, token);
         let m = self.templates.render_verification(&user.email, &verify_url);
         self.email
             .send_email(&user.email, &m.subject, &m.html, &m.text)

@@ -45,6 +45,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Base URL used to build shareable invite links.
     let public_base_url =
         std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_owned());
+    // Frontend base URL, used to build the email-verification link (the /verify
+    // page is served by the SvelteKit SPA, not the API).
+    let frontend_base_url = std::env::var("FRONTEND_BASE_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "http://localhost:5173".to_owned());
     // Business contact shown to users in the "limit reached" dialog, and where
     // upgrade-request notifications are delivered (defaults to the contact).
     let contact_email = std::env::var("BUSINESS_CONTACT_EMAIL")
@@ -159,7 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         email.clone(),
         clock.clone(),
         account_templates.clone(),
-        public_base_url.clone(),
+        frontend_base_url,
     ));
     let events: Arc<dyn EventService> = Arc::new(EventServiceImpl::new(
         events_repo.clone(),

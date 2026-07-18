@@ -47,6 +47,12 @@ resource "digitalocean_app" "backend" {
         value = local.api_url
         scope = "RUN_TIME"
       }
+      # Verification-email links point at the frontend SPA (/verify), not the API.
+      env {
+        key   = "FRONTEND_BASE_URL"
+        value = local.frontend_url
+        scope = "RUN_TIME"
+      }
       env {
         key   = "CORS_ALLOWED_ORIGINS"
         value = local.cors_origins

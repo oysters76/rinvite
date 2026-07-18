@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ApiError, auth } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
@@ -18,6 +19,8 @@
 		try {
 			await auth.verify(token);
 			status = 'ok';
+			// Show the confirmation briefly, then send them to sign in.
+			setTimeout(() => goto('/login'), 1500);
 		} catch (err) {
 			status = 'error';
 			message =
