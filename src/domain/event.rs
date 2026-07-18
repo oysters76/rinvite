@@ -20,6 +20,8 @@ pub struct Event {
     pub venue_name: String,
     /// Guests must RSVP on or before this date.
     pub rsvp_by: NaiveDate,
+    /// Optional auspicious time for the Poruwa ceremony.
+    pub poruwa_ceremony_time: Option<NaiveTime>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -36,6 +38,7 @@ pub struct NewEvent {
     pub hall_name: String,
     pub venue_name: String,
     pub rsvp_by: NaiveDate,
+    pub poruwa_ceremony_time: Option<NaiveTime>,
 }
 
 /// Partial update for an event — only the `Some` fields are changed.
@@ -51,6 +54,9 @@ pub struct EventUpdate {
     pub hall_name: Option<String>,
     pub venue_name: Option<String>,
     pub rsvp_by: Option<NaiveDate>,
+    /// `Some(inner)` sets the value (`inner` may be `None` to clear); `None`
+    /// leaves it unchanged — mirrors the guest-contact update idiom.
+    pub poruwa_ceremony_time: Option<Option<NaiveTime>>,
 }
 
 impl Event {
@@ -69,6 +75,7 @@ impl Event {
             hall_name: details.hall_name,
             venue_name: details.venue_name,
             rsvp_by: details.rsvp_by,
+            poruwa_ceremony_time: details.poruwa_ceremony_time,
             created_at: now,
         }
     }
@@ -105,6 +112,9 @@ impl Event {
         if let Some(v) = u.rsvp_by {
             self.rsvp_by = v;
         }
+        if let Some(v) = u.poruwa_ceremony_time {
+            self.poruwa_ceremony_time = v;
+        }
     }
 
     /// A `NewEvent` view of the current field values, for re-validation.
@@ -120,6 +130,7 @@ impl Event {
             hall_name: self.hall_name.clone(),
             venue_name: self.venue_name.clone(),
             rsvp_by: self.rsvp_by,
+            poruwa_ceremony_time: self.poruwa_ceremony_time,
         }
     }
 }

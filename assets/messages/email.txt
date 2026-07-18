@@ -6,7 +6,7 @@ We would be honoured by your presence as we celebrate our wedding.
 
   {date}
   {time}
-  {hall}, {venue}
+  {hall}, {venue}{poruwa_text}
 
 View your invitation and RSVP here:
 {invite_url}

@@ -43,6 +43,8 @@ struct InvitePageData {
     time_text: String,
     venue_name: String,
     hall_name: String,
+    /// Optional labelled Poruwa line; `None` when unset so the page hides it.
+    poruwa_text: Option<String>,
     rsvp_by_text: String,
     footer: String,
     rsvp: RsvpData,
@@ -83,6 +85,9 @@ pub fn render_invite_page(template: &str, view: &InviteView, token: &str) -> Str
         ),
         venue_name: e.venue_name.clone(),
         hall_name: e.hall_name.clone(),
+        poruwa_text: e
+            .poruwa_ceremony_time
+            .map(|t| format!("Poruwa Ceremony at {}", fmt_time(t))),
         rsvp_by_text: format!(
             "RSVP by {} {}",
             ordinal(e.rsvp_by.day()),

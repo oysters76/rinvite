@@ -30,7 +30,8 @@
 		end_time: '15:00',
 		hall_name: '',
 		venue_name: '',
-		rsvp_by: ''
+		rsvp_by: '',
+		poruwa_ceremony_time: ''
 	};
 
 	let form = $state<CreateEvent>({ ...blank });
@@ -64,7 +65,9 @@
 		}
 		saving = true;
 		try {
-			const saved = event ? await eventsApi.update(event.id, form) : await eventsApi.create(form);
+			// Empty Poruwa time is omitted so the API leaves it unset.
+			const payload = { ...form, poruwa_ceremony_time: form.poruwa_ceremony_time || undefined };
+			const saved = event ? await eventsApi.update(event.id, payload) : await eventsApi.create(payload);
 			toast.success(event ? 'Event updated.' : 'Event created.');
 			open = false;
 			onsaved?.(saved);
@@ -128,6 +131,10 @@
 				<div class="grid gap-1.5">
 					<Label for="vn">Venue name</Label>
 					<Input id="vn" bind:value={form.venue_name} />
+				</div>
+				<div class="grid gap-1.5">
+					<Label for="pct">Poruwa ceremony time (optional)</Label>
+					<Input id="pct" type="time" bind:value={form.poruwa_ceremony_time} />
 				</div>
 			</div>
 			<Dialog.Footer>

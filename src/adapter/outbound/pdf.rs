@@ -493,6 +493,14 @@ fn resolve_tokens(e: &Event, g: &Guest) -> HashMap<&'static str, String> {
     m.insert("end_time", clock_time(e.end_time));
     m.insert("hall_name", e.hall_name.clone());
     m.insert("venue_name", e.venue_name.clone());
+    // Optional: full labelled line, or empty so the config element is skipped.
+    m.insert(
+        "poruwa_ceremony",
+        match e.poruwa_ceremony_time {
+            Some(t) => format!("Poruwa Ceremony at {}", clock_time(t)),
+            None => String::new(),
+        },
+    );
     m.insert(
         "rsvp_by",
         format!("{} {}", ordinal(e.rsvp_by.day()), e.rsvp_by.format("%B")),

@@ -48,6 +48,8 @@ struct CreateEventRequest {
     hall_name: String,
     venue_name: String,
     rsvp_by: NaiveDate,
+    #[serde(default)]
+    poruwa_ceremony_time: Option<NaiveTime>,
 }
 
 impl From<CreateEventRequest> for NewEvent {
@@ -63,6 +65,7 @@ impl From<CreateEventRequest> for NewEvent {
             hall_name: r.hall_name,
             venue_name: r.venue_name,
             rsvp_by: r.rsvp_by,
+            poruwa_ceremony_time: r.poruwa_ceremony_time,
         }
     }
 }
@@ -80,6 +83,8 @@ struct EventResponse {
     hall_name: String,
     venue_name: String,
     rsvp_by: NaiveDate,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    poruwa_ceremony_time: Option<NaiveTime>,
 }
 
 impl From<Event> for EventResponse {
@@ -96,6 +101,7 @@ impl From<Event> for EventResponse {
             hall_name: e.hall_name,
             venue_name: e.venue_name,
             rsvp_by: e.rsvp_by,
+            poruwa_ceremony_time: e.poruwa_ceremony_time,
         }
     }
 }
@@ -194,6 +200,8 @@ struct UpdateEventRequest {
     hall_name: Option<String>,
     venue_name: Option<String>,
     rsvp_by: Option<NaiveDate>,
+    #[serde(default)]
+    poruwa_ceremony_time: Option<NaiveTime>,
 }
 
 impl From<UpdateEventRequest> for EventUpdate {
@@ -209,6 +217,7 @@ impl From<UpdateEventRequest> for EventUpdate {
             hall_name: r.hall_name,
             venue_name: r.venue_name,
             rsvp_by: r.rsvp_by,
+            poruwa_ceremony_time: r.poruwa_ceremony_time.map(Some),
         }
     }
 }

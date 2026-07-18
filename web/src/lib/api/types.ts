@@ -33,6 +33,8 @@ export interface Event {
 	hall_name: string;
 	venue_name: string;
 	rsvp_by: string;
+	/** Optional Poruwa ceremony time, HH:MM(:SS). Omitted/absent when unset. */
+	poruwa_ceremony_time?: string;
 }
 
 export type CreateEvent = Omit<Event, 'id'>;

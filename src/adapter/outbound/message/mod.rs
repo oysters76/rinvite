@@ -59,10 +59,23 @@ impl MessageTemplates {
 
     pub fn render_email(&self, event: &Event, guest: &Guest, invite_url: &str) -> RenderedEmail {
         let vars = build_vars(event, guest, invite_url);
+        // Optional Poruwa line. Built as trusted text (static label + time-only
+        // value) and spliced in raw, so an unset value collapses to nothing.
+        let poruwa = event
+            .poruwa_ceremony_time
+            .map(|t| format!("Poruwa Ceremony at {}", fmt_time(t)));
+        let poruwa_html = poruwa
+            .as_deref()
+            .map(|s| format!("<p style=\"margin: 0 0 28px; color: #6b5d45;\">{s}</p>"))
+            .unwrap_or_default();
+        let poruwa_text = poruwa
+            .as_deref()
+            .map(|s| format!("\n  {s}"))
+            .unwrap_or_default();
         RenderedEmail {
             subject: fill(&self.email_subject, &vars, false).trim().to_owned(),
-            html: fill(&self.email_html, &vars, true),
-            text: fill(&self.email_text, &vars, false),
+            html: fill(&self.email_html, &vars, true).replace("{poruwa_html}", &poruwa_html),
+            text: fill(&self.email_text, &vars, false).replace("{poruwa_text}", &poruwa_text),
         }
     }
 
@@ -170,6 +183,7 @@ mod tests {
                 hall_name: "Kings Ballroom".into(),
                 venue_name: "Kandy".into(),
                 rsvp_by: NaiveDate::from_ymd_opt(2026, 8, 20).unwrap(),
+                poruwa_ceremony_time: None,
             },
             now,
         );
@@ -211,5 +225,31 @@ mod tests {
         let sms = t.render_sms(&e, &g, url);
         assert!(sms.contains("Ravi <b>")); // not escaped in plain text
         assert!(sms.contains(url));
+    }
+
+    #[test]
+    fn poruwa_line_shows_only_when_set() {
+        let (mut e, g) = sample();
+        let t = MessageTemplates {
+            email_html: "<p>{venue}</p>{poruwa_html}".into(),
+            email_text: "{venue}{poruwa_text}".into(),
+            email_subject: "{couple}".into(),
+            whatsapp: "".into(),
+            sms: "".into(),
+        };
+        let url = "https://x/i/AbC123";
+
+        // Unset: the placeholders collapse to nothing — no label, no empty tag.
+        let email = t.render_email(&e, &g, url);
+        assert!(!email.html.contains("Poruwa"));
+        assert_eq!(email.html, "<p>Kandy</p>");
+        assert!(!email.text.contains("Poruwa"));
+        assert_eq!(email.text, "Kandy");
+
+        // Set: the labelled line appears in both HTML and text.
+        e.poruwa_ceremony_time = Some(NaiveTime::from_hms_opt(17, 30, 0).unwrap());
+        let email = t.render_email(&e, &g, url);
+        assert!(email.html.contains("Poruwa Ceremony at 5:30 PM"));
+        assert!(email.text.contains("Poruwa Ceremony at 5:30 PM"));
     }
 }

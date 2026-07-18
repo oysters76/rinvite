@@ -43,6 +43,9 @@ fn row_to_event(row: &PgRow) -> Result<Event, DomainError> {
         hall_name: row.try_get("hall_name").map_err(repo_err)?,
         venue_name: row.try_get("venue_name").map_err(repo_err)?,
         rsvp_by: row.try_get::<NaiveDate, _>("rsvp_by").map_err(repo_err)?,
+        poruwa_ceremony_time: row
+            .try_get::<Option<NaiveTime>, _>("poruwa_ceremony_time")
+            .map_err(repo_err)?,
         created_at: row
             .try_get::<DateTime<Utc>, _>("created_at")
             .map_err(repo_err)?,
@@ -80,8 +83,8 @@ impl EventRepository for PostgresEventStore {
         sqlx::query(
             "INSERT INTO events (id, owner_id, bride_name, bride_family_name, groom_name, \
              groom_family_name, event_date, start_time, end_time, hall_name, venue_name, \
-             rsvp_by, created_at) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+             rsvp_by, poruwa_ceremony_time, created_at) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
         )
         .bind(e.id)
         .bind(e.owner_id)
@@ -95,6 +98,7 @@ impl EventRepository for PostgresEventStore {
         .bind(&e.hall_name)
         .bind(&e.venue_name)
         .bind(e.rsvp_by)
+        .bind(e.poruwa_ceremony_time)
         .bind(e.created_at)
         .execute(&self.pool)
         .await
@@ -124,7 +128,7 @@ impl EventRepository for PostgresEventStore {
         sqlx::query(
             "UPDATE events SET bride_name=$2, bride_family_name=$3, groom_name=$4, \
              groom_family_name=$5, event_date=$6, start_time=$7, end_time=$8, hall_name=$9, \
-             venue_name=$10, rsvp_by=$11 WHERE id=$1",
+             venue_name=$10, rsvp_by=$11, poruwa_ceremony_time=$12 WHERE id=$1",
         )
         .bind(e.id)
         .bind(&e.bride_name)
@@ -137,6 +141,7 @@ impl EventRepository for PostgresEventStore {
         .bind(&e.hall_name)
         .bind(&e.venue_name)
         .bind(e.rsvp_by)
+        .bind(e.poruwa_ceremony_time)
         .execute(&self.pool)
         .await
         .map_err(repo_err)?;

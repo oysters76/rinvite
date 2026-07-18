@@ -137,6 +137,7 @@ mod tests {
                 hall_name: "Hall".into(),
                 venue_name: "Venue".into(),
                 rsvp_by: NaiveDate::from_ymd_opt(2026, 8, 20).unwrap(),
+                poruwa_ceremony_time: None,
             },
             now,
         )

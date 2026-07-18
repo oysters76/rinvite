@@ -30,6 +30,7 @@
 
     { "template": "At {hall_name}", "font": "serif_italic", "size": 16, "x_mm": 75.85, "y_mm": 46, "align": "center", "color": [0.20, 0.15, 0.10] },
     { "template": "{venue_name}", "font": "serif_italic", "size": 13, "x_mm": 75.85, "y_mm": 40, "align": "center", "color": [0.20, 0.15, 0.10] },
+    { "template": "{poruwa_ceremony}", "font": "serif_italic", "size": 10, "x_mm": 75.85, "y_mm": 35, "align": "center", "color": [0.20, 0.15, 0.10] },
 
     { "template": "RSVP by {rsvp_by}", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 26, "align": "center", "color": [0.60, 0.46, 0.16] }
   ]

@@ -284,6 +284,7 @@
       <div class="reveal">
         <p class="eyebrow">The Venue</p>
         <h2 style="margin-top:14px" id="venueName">The Marigold Estate</h2>
+        <p class="lead" id="poruwaLine" style="display:none"></p>
         <div class="rule"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M12 21s-6-5.2-6-10a6 6 0 1 1 12 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg></div>
         <p class="lead" id="hallLine">By the Old Garden Gate.</p>
         <p class="when" id="timeLine">Four o'clock in the afternoon</p>
@@ -368,6 +369,7 @@ set('greeting', DATA.greeting);
 set('dateBig', DATA.dateBig);
 set('dateYear', DATA.dateYear);
 set('venueName', DATA.venueName);
+if (DATA.poruwaText) { const p = document.getElementById('poruwaLine'); if (p) { p.textContent = DATA.poruwaText; p.style.display = ''; } }
 set('hallLine', DATA.hallName);
 set('timeLine', DATA.timeText);
 set('rsvpBy', DATA.rsvpByText);
