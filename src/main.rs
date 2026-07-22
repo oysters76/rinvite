@@ -26,6 +26,7 @@ use adapter::outbound::whatsapp::log::LogWhatsAppClient;
 use adapter::outbound::whatsapp::twilio::TwilioWhatsApp;
 use application::auth_service::AuthServiceImpl;
 use application::billing_service::BillingServiceImpl;
+use application::cleanup::spawn_stale_account_cleanup;
 use application::event_service::EventServiceImpl;
 use application::invite_service::InviteServiceImpl;
 use domain::port::inbound::{AuthService, BillingService, EventService, InviteService};
@@ -61,6 +62,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| contact_email.clone());
+    // How long an account may sit without completing both verification stages
+    // (email verify + owner approval) before the cleanup sweep deletes it.
+    let stale_days: i64 = std::env::var("ACCOUNT_STALE_DAYS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|d| *d > 0)
+        .unwrap_or(7);
 
     // ===== Outbound adapters (driven side) ==================================
     let hasher: Arc<dyn PasswordHasher> = Arc::new(Argon2Hasher);
@@ -157,6 +165,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // Background sweep that deletes accounts stuck below full approval. Runs in
+    // this process (one sweep at startup, then hourly).
+    spawn_stale_account_cleanup(
+        users.clone(),
+        clock.clone(),
+        chrono::Duration::days(stale_days),
+        std::time::Duration::from_secs(60 * 60),
+    );
+
     // ===== Application services (implement the inbound ports) ================
     let auth: Arc<dyn AuthService> = Arc::new(AuthServiceImpl::new(
         users.clone(),
@@ -166,6 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         clock.clone(),
         account_templates.clone(),
         frontend_base_url,
+        upgrade_notify_email.clone(),
     ));
     let events: Arc<dyn EventService> = Arc::new(EventServiceImpl::new(
         events_repo.clone(),

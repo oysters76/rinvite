@@ -28,6 +28,18 @@ const DEFAULT_UPGRADE_SUBJECT: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/messages/upgrade-request-subject.txt"
 ));
+const DEFAULT_APPROVAL_HTML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/messages/account-approval.html"
+));
+const DEFAULT_APPROVAL_TEXT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/messages/account-approval.txt"
+));
+const DEFAULT_APPROVAL_SUBJECT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/messages/account-approval-subject.txt"
+));
 
 /// Loads and renders the account-lifecycle emails: address verification and the
 /// owner-facing upgrade-request notification.
@@ -39,6 +51,9 @@ pub struct AccountTemplates {
     upgrade_html: String,
     upgrade_text: String,
     upgrade_subject: String,
+    approval_html: String,
+    approval_text: String,
+    approval_subject: String,
 }
 
 impl AccountTemplates {
@@ -50,6 +65,9 @@ impl AccountTemplates {
             upgrade_html: load("UPGRADE_EMAIL_TEMPLATE_HTML", DEFAULT_UPGRADE_HTML)?,
             upgrade_text: load("UPGRADE_EMAIL_TEMPLATE_TEXT", DEFAULT_UPGRADE_TEXT)?,
             upgrade_subject: load("UPGRADE_EMAIL_TEMPLATE_SUBJECT", DEFAULT_UPGRADE_SUBJECT)?,
+            approval_html: load("ACCOUNT_APPROVAL_TEMPLATE_HTML", DEFAULT_APPROVAL_HTML)?,
+            approval_text: load("ACCOUNT_APPROVAL_TEMPLATE_TEXT", DEFAULT_APPROVAL_TEXT)?,
+            approval_subject: load("ACCOUNT_APPROVAL_TEMPLATE_SUBJECT", DEFAULT_APPROVAL_SUBJECT)?,
         })
     }
 
@@ -82,6 +100,22 @@ impl AccountTemplates {
             subject: fill(&self.upgrade_subject, &vars, false).trim().to_owned(),
             html: fill(&self.upgrade_html, &vars, true),
             text: fill(&self.upgrade_text, &vars, false),
+        }
+    }
+
+    /// The owner notification sent when a user verifies their email and now
+    /// needs manual approval.
+    pub fn render_approval_request(&self, user_email: &str, requested_at: &str) -> RenderedEmail {
+        let vars = vec![
+            ("user_email", user_email.to_owned()),
+            ("requested_at", requested_at.to_owned()),
+        ];
+        RenderedEmail {
+            subject: fill(&self.approval_subject, &vars, false)
+                .trim()
+                .to_owned(),
+            html: fill(&self.approval_html, &vars, true),
+            text: fill(&self.approval_text, &vars, false),
         }
     }
 }

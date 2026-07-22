@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row, postgres::PgRow};
 use uuid::Uuid;
 
+use crate::domain::approval::ApprovalStatus;
 use crate::domain::error::DomainError;
 use crate::domain::model::User;
 use crate::domain::plan::Plan;
@@ -11,6 +12,7 @@ use crate::domain::port::outbound::UserRepository;
 fn row_to_user(row: &PgRow) -> Result<User, DomainError> {
     let e = |e: sqlx::Error| DomainError::Repository(e.to_string());
     let plan: String = row.try_get("plan").map_err(e)?;
+    let approval_status: String = row.try_get("approval_status").map_err(e)?;
     Ok(User {
         id: row.try_get("id").map_err(e)?,
         email: row.try_get("email").map_err(e)?,
@@ -21,6 +23,8 @@ fn row_to_user(row: &PgRow) -> Result<User, DomainError> {
         verification_expires_at: row
             .try_get::<Option<DateTime<Utc>>, _>("verification_expires_at")
             .map_err(e)?,
+        approval_status: ApprovalStatus::parse(&approval_status)?,
+        created_at: row.try_get("created_at").map_err(e)?,
     })
 }
 
@@ -44,7 +48,7 @@ impl UserRepository for PostgresUserRepository {
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, DomainError> {
         let row = sqlx::query(
             "SELECT id, email, password_hash, plan, email_verified, verification_token, \
-             verification_expires_at FROM users WHERE email = $1",
+             verification_expires_at, approval_status, created_at FROM users WHERE email = $1",
         )
         .bind(email)
         .fetch_optional(&self.pool)
@@ -59,7 +63,7 @@ impl UserRepository for PostgresUserRepository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, DomainError> {
         let row = sqlx::query(
             "SELECT id, email, password_hash, plan, email_verified, verification_token, \
-             verification_expires_at FROM users WHERE id = $1",
+             verification_expires_at, approval_status, created_at FROM users WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -71,7 +75,8 @@ impl UserRepository for PostgresUserRepository {
     async fn find_by_verification_token(&self, token: &str) -> Result<Option<User>, DomainError> {
         let row = sqlx::query(
             "SELECT id, email, password_hash, plan, email_verified, verification_token, \
-             verification_expires_at FROM users WHERE verification_token = $1",
+             verification_expires_at, approval_status, created_at FROM users \
+             WHERE verification_token = $1",
         )
         .bind(token)
         .fetch_optional(&self.pool)
@@ -83,8 +88,8 @@ impl UserRepository for PostgresUserRepository {
     async fn save(&self, user: &User) -> Result<(), DomainError> {
         let result = sqlx::query(
             "INSERT INTO users (id, email, password_hash, plan, email_verified, \
-             verification_token, verification_expires_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+             verification_token, verification_expires_at, approval_status, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
         .bind(user.id)
         .bind(&user.email)
@@ -93,6 +98,8 @@ impl UserRepository for PostgresUserRepository {
         .bind(user.email_verified)
         .bind(&user.verification_token)
         .bind(user.verification_expires_at)
+        .bind(user.approval_status.as_str())
+        .bind(user.created_at)
         .execute(&self.pool)
         .await;
 
@@ -109,16 +116,30 @@ impl UserRepository for PostgresUserRepository {
     async fn update(&self, user: &User) -> Result<(), DomainError> {
         sqlx::query(
             "UPDATE users SET plan = $2, email_verified = $3, verification_token = $4, \
-             verification_expires_at = $5 WHERE id = $1",
+             verification_expires_at = $5, approval_status = $6 WHERE id = $1",
         )
         .bind(user.id)
         .bind(user.plan.as_str())
         .bind(user.email_verified)
         .bind(&user.verification_token)
         .bind(user.verification_expires_at)
+        .bind(user.approval_status.as_str())
         .execute(&self.pool)
         .await
         .map_err(|e| DomainError::Repository(e.to_string()))?;
         Ok(())
+    }
+
+    async fn delete_stale(&self, cutoff: DateTime<Utc>) -> Result<u64, DomainError> {
+        let result = sqlx::query(
+            "DELETE FROM users \
+             WHERE created_at < $1 \
+               AND (email_verified = FALSE OR approval_status <> 'approved')",
+        )
+        .bind(cutoff)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| DomainError::Repository(e.to_string()))?;
+        Ok(result.rows_affected())
     }
 }

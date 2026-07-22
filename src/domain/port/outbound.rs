@@ -20,6 +20,10 @@ pub trait UserRepository: Send + Sync {
     async fn save(&self, user: &User) -> Result<(), DomainError>;
     /// Persist changes to an existing user (verification state, plan, ...).
     async fn update(&self, user: &User) -> Result<(), DomainError>;
+    /// Delete accounts created before `cutoff` that never completed both
+    /// verification stages (email unverified OR not owner-approved). Returns the
+    /// number of rows removed. Fully-approved accounts are never deleted.
+    async fn delete_stale(&self, cutoff: DateTime<Utc>) -> Result<u64, DomainError>;
 }
 
 #[async_trait]

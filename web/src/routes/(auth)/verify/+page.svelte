@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ApiError, auth } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
@@ -19,8 +18,6 @@
 		try {
 			await auth.verify(token);
 			status = 'ok';
-			// Show the confirmation briefly, then send them to sign in.
-			setTimeout(() => goto('/login'), 1500);
 		} catch (err) {
 			status = 'error';
 			message =
@@ -37,7 +34,10 @@
 				<Card.Description>Hang tight while we confirm your email.</Card.Description>
 			{:else if status === 'ok'}
 				<div class="text-2xl font-extrabold tracking-tight">Email verified</div>
-				<Card.Description>Your account is ready. You can sign in now.</Card.Description>
+				<Card.Description>
+					Thanks! An administrator will review your account before you can sign in. We'll let you
+					know once it's approved.
+				</Card.Description>
 			{:else}
 				<div class="text-2xl font-extrabold tracking-tight">Verification failed</div>
 				<Card.Description>{message}</Card.Description>

@@ -115,6 +115,9 @@ impl IntoResponse for ApiError {
             DomainError::Unauthorized => (StatusCode::UNAUTHORIZED, self.0.to_string()),
             // Verified-email gate and plan caps get distinct codes the SPA keys on.
             DomainError::EmailNotVerified => (StatusCode::FORBIDDEN, self.0.to_string()),
+            // Distinct from 403 so the SPA can tell "verify your email" apart
+            // from "verified, waiting for owner approval".
+            DomainError::AccountPendingApproval => (StatusCode::LOCKED, self.0.to_string()),
             DomainError::LimitReached(_) => (StatusCode::PAYMENT_REQUIRED, self.0.to_string()),
             DomainError::NotFound(_) => (StatusCode::NOT_FOUND, self.0.to_string()),
             DomainError::RsvpClosed => (StatusCode::CONFLICT, self.0.to_string()),

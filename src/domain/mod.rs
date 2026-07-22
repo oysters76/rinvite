@@ -1,3 +1,4 @@
+pub mod approval;
 pub mod error;
 pub mod event;
 pub mod guest;

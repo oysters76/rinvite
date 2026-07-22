@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::adapter::outbound::message::account::AccountTemplates;
+use crate::domain::approval::ApprovalStatus;
 use crate::domain::error::DomainError;
 use crate::domain::model::User;
 use crate::domain::port::inbound::{AuthService, AuthToken};
@@ -26,6 +27,8 @@ pub struct AuthServiceImpl {
     /// Frontend base URL used to build the email-verification link (the /verify
     /// page is served by the web app, not the API).
     frontend_base_url: String,
+    /// Where the owner-facing "new account needs approval" notification is sent.
+    notify_email: String,
 }
 
 impl AuthServiceImpl {
@@ -37,6 +40,7 @@ impl AuthServiceImpl {
         clock: Arc<dyn Clock>,
         templates: AccountTemplates,
         frontend_base_url: String,
+        notify_email: String,
     ) -> Self {
         Self {
             users,
@@ -46,6 +50,7 @@ impl AuthServiceImpl {
             clock,
             templates,
             frontend_base_url,
+            notify_email,
         }
     }
 
@@ -95,6 +100,10 @@ impl AuthService for AuthServiceImpl {
                     if !user.email_verified {
                         return Err(DomainError::EmailNotVerified);
                     }
+                    // Second gate: the owner must have approved the account.
+                    if user.approval_status != ApprovalStatus::Approved {
+                        return Err(DomainError::AccountPendingApproval);
+                    }
                     let token = self.tokens.issue(user.id)?;
                     Ok(AuthToken { value: token })
                 } else {
@@ -132,7 +141,19 @@ impl AuthService for AuthServiceImpl {
         }
 
         user.mark_verified();
-        self.users.update(&user).await
+        self.users.update(&user).await?;
+
+        // The user has cleared the first gate. Notify the owner so they can
+        // manually approve the account (the second gate). We do this only on the
+        // verify transition — the early `email_verified` return above prevents
+        // re-notifying when a verification link is reused.
+        let requested_at = self.clock.now().format("%Y-%m-%d %H:%M UTC").to_string();
+        let m = self
+            .templates
+            .render_approval_request(&user.email, &requested_at);
+        self.email
+            .send_email(&self.notify_email, &m.subject, &m.html, &m.text)
+            .await
     }
 
     async fn resend_verification(&self, email: &str) -> Result<(), DomainError> {
@@ -224,6 +245,7 @@ mod tests {
             Arc::new(clock),
             AccountTemplates::from_env().expect("templates load"),
             "http://app".into(),
+            "owner@app".into(),
         );
         (svc, users, email)
     }
@@ -260,7 +282,8 @@ mod tests {
             Err(DomainError::InvalidCredentials)
         ));
 
-        // Verify, then login works.
+        // Verify the email — but that only clears the FIRST gate. The account is
+        // still pending owner approval, so login is refused with a distinct error.
         let token = users
             .find_by_email("a@b.com")
             .await
@@ -269,9 +292,38 @@ mod tests {
             .verification_token
             .unwrap();
         svc.verify_email(&token).await.unwrap();
+        assert!(matches!(
+            svc.login("a@b.com", "password1").await,
+            Err(DomainError::AccountPendingApproval)
+        ));
+
+        // Owner approves (in production a manual DB edit); now login works.
+        let mut user = users.find_by_email("a@b.com").await.unwrap().unwrap();
+        user.approve();
+        users.update(&user).await.unwrap();
         assert_eq!(
             svc.login("a@b.com", "password1").await.unwrap().value,
             "jwt"
+        );
+    }
+
+    #[tokio::test]
+    async fn verifying_email_notifies_the_owner_for_approval() {
+        let (svc, users, email) = service(now());
+        svc.signup("a@b.com", "password1").await.unwrap();
+        let token = users
+            .find_by_email("a@b.com")
+            .await
+            .unwrap()
+            .unwrap()
+            .verification_token
+            .unwrap();
+        svc.verify_email(&token).await.unwrap();
+
+        // Signup emailed the user; verifying then emailed the owner to approve.
+        assert_eq!(
+            email.sent_to.lock().unwrap().as_slice(),
+            ["a@b.com", "owner@app"]
         );
     }
 
@@ -297,6 +349,7 @@ mod tests {
             Arc::new(late),
             AccountTemplates::from_env().unwrap(),
             "http://app".into(),
+            "owner@app".into(),
         );
         assert!(matches!(
             svc_late.verify_email(&token).await,

@@ -1,0 +1,7 @@
+A new Rinvite user has verified their email and is awaiting your approval.
+
+  User:         {user_email}
+  Verified at:  {requested_at}
+
+To approve, set approval_status = 'approved' for this user in the database.
+Unapproved accounts are removed automatically after the grace period.

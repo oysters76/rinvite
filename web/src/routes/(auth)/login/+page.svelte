@@ -11,18 +11,24 @@
 	let password = $state('');
 	let loading = $state(false);
 	let needsVerification = $state(false);
+	let pendingApproval = $state(false);
 	let resending = $state(false);
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
 		loading = true;
+		needsVerification = false;
+		pendingApproval = false;
 		try {
 			await auth.login(email, password);
 			await goto('/events');
 		} catch (err) {
 			// 403 = correct credentials but the email isn't verified yet.
+			// 423 = email verified, but the account is awaiting owner approval.
 			if (err instanceof ApiError && err.status === 403) {
 				needsVerification = true;
+			} else if (err instanceof ApiError && err.status === 423) {
+				pendingApproval = true;
 			} else {
 				toast.error(err instanceof ApiError ? err.message : 'Could not sign in');
 			}
@@ -63,6 +69,14 @@
 						>
 							{resending ? 'Sending…' : 'Resend verification email'}
 						</button>
+					</div>
+				{/if}
+				{#if pendingApproval}
+					<div class="rounded-md border border-sky-300 bg-sky-50 p-3 text-sm text-sky-900">
+						<p>
+							Your email is verified and your account is awaiting approval. An administrator is
+							reviewing it — you'll be able to sign in once it's approved.
+						</p>
 					</div>
 				{/if}
 				<div class="grid gap-1.5">

@@ -1,6 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
+use super::approval::ApprovalStatus;
 use super::plan::Plan;
 
 /// How long an email-verification token stays valid after it is issued.
@@ -20,6 +21,11 @@ pub struct User {
     pub verification_token: Option<String>,
     /// When the outstanding token stops being accepted.
     pub verification_expires_at: Option<DateTime<Utc>>,
+    /// The manual owner-approval state. A verified email is not enough to log in
+    /// until the owner promotes this to `Approved`.
+    pub approval_status: ApprovalStatus,
+    /// When the account was created — used by the stale-account cleanup sweep.
+    pub created_at: DateTime<Utc>,
 }
 
 impl User {
@@ -34,7 +40,16 @@ impl User {
             email_verified: false,
             verification_token: Some(verification_token()),
             verification_expires_at: Some(now + VERIFICATION_TTL),
+            approval_status: ApprovalStatus::Pending,
+            created_at: now,
         }
+    }
+
+    /// Promote the account to owner-approved (used in tests; in production the
+    /// owner flips the row directly in the database).
+    #[cfg(test)]
+    pub fn approve(&mut self) {
+        self.approval_status = ApprovalStatus::Approved;
     }
 
     /// Issue a fresh verification token (used when resending the email).

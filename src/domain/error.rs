@@ -35,6 +35,11 @@ pub enum DomainError {
     #[error("email not verified")]
     EmailNotVerified,
 
+    // The email is verified but the owner has not approved the account yet —
+    // login is refused until they do. The message is safe to return.
+    #[error("account pending approval")]
+    AccountPendingApproval,
+
     // A plan usage limit was hit. The message names the limit (e.g. "the free
     // plan allows 1 event") and is safe to return to the caller.
     #[error("{0}")]
