@@ -69,6 +69,15 @@ impl GuestRepository for InMemoryEventStore {
         Ok(())
     }
 
+    async fn save_many(&self, guests: &[Guest]) -> Result<(), DomainError> {
+        // One lock for the whole batch, mirroring the Postgres transaction.
+        let mut store = self.guests.write().await;
+        for g in guests {
+            store.insert(g.id, g.clone());
+        }
+        Ok(())
+    }
+
     async fn find(&self, id: Uuid) -> Result<Option<Guest>, DomainError> {
         Ok(self.guests.read().await.get(&id).cloned())
     }

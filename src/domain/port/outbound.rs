@@ -61,6 +61,8 @@ pub trait EventRepository: Send + Sync {
 #[async_trait]
 pub trait GuestRepository: Send + Sync {
     async fn save(&self, guest: &Guest) -> Result<(), DomainError>;
+    /// Persist many new guests atomically — either all are saved or none are.
+    async fn save_many(&self, guests: &[Guest]) -> Result<(), DomainError>;
     async fn find(&self, id: Uuid) -> Result<Option<Guest>, DomainError>;
     async fn find_by_token(&self, token: &str) -> Result<Option<Guest>, DomainError>;
     async fn list_by_event(&self, event_id: Uuid) -> Result<Vec<Guest>, DomainError>;

@@ -151,6 +151,62 @@ impl EventService for EventServiceImpl {
         Ok(guest)
     }
 
+    async fn add_guests_bulk(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+        details: Vec<NewGuest>,
+    ) -> Result<Vec<Guest>, DomainError> {
+        self.owned_event(owner_id, event_id).await?; // ownership gate
+
+        // Bound the batch: reject an empty upload, and cap the size so a single
+        // request can't be turned into a huge write.
+        const MAX_BULK: usize = 500;
+        if details.is_empty() {
+            return Err(DomainError::InvalidInput(
+                "no guests to import".to_owned(),
+            ));
+        }
+        if details.len() > MAX_BULK {
+            return Err(DomainError::InvalidInput(format!(
+                "cannot import more than {MAX_BULK} guests at once"
+            )));
+        }
+
+        // Validate every row up front — nothing is inserted unless all pass.
+        for (i, d) in details.iter().enumerate() {
+            validate_guest(d).map_err(|e| match e {
+                DomainError::InvalidInput(msg) => {
+                    DomainError::InvalidInput(format!("row {}: {msg}", i + 1))
+                }
+                other => other,
+            })?;
+        }
+
+        // Plan gate: the whole batch must fit under the per-event guest cap.
+        if let Some(max) = self
+            .owner_plan(owner_id)
+            .await?
+            .limits()
+            .max_guests_per_event
+        {
+            let existing = self.guests.list_by_event(event_id).await?.len() as u32;
+            if existing + details.len() as u32 > max {
+                return Err(DomainError::LimitReached(format!(
+                    "your plan allows {max} guests per event"
+                )));
+            }
+        }
+
+        let now = self.clock.now();
+        let guests: Vec<Guest> = details
+            .into_iter()
+            .map(|d| Guest::new(event_id, d, now))
+            .collect();
+        self.guests.save_many(&guests).await?;
+        Ok(guests)
+    }
+
     async fn list_guests(&self, owner_id: Uuid, event_id: Uuid) -> Result<Vec<Guest>, DomainError> {
         self.owned_event(owner_id, event_id).await?; // ownership gate
         self.guests.list_by_event(event_id).await
@@ -597,5 +653,62 @@ mod tests {
                     .unwrap();
             }
         }
+    }
+
+    #[tokio::test]
+    async fn bulk_add_inserts_every_valid_guest() {
+        let (svc, owner) = svc_on_plan(Plan::Max).await;
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+        let batch = vec![
+            guest("Ann", InviteChannel::EInvite),
+            guest("Bo", InviteChannel::Print),
+            guest("Cy", InviteChannel::EInvite),
+        ];
+        let added = svc.add_guests_bulk(owner, ev.id, batch).await.unwrap();
+        assert_eq!(added.len(), 3);
+        assert_eq!(svc.list_guests(owner, ev.id).await.unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn bulk_add_is_all_or_nothing_on_an_invalid_row() {
+        let (svc, owner) = svc_on_plan(Plan::Max).await;
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+        // Second row has an empty name — the whole batch must be rejected.
+        let batch = vec![
+            guest("Ann", InviteChannel::EInvite),
+            guest("   ", InviteChannel::Print),
+            guest("Cy", InviteChannel::EInvite),
+        ];
+        assert!(matches!(
+            svc.add_guests_bulk(owner, ev.id, batch).await,
+            Err(DomainError::InvalidInput(_))
+        ));
+        // Nothing was persisted.
+        assert!(svc.list_guests(owner, ev.id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn bulk_add_rejects_batch_that_would_exceed_plan_cap() {
+        let (svc, owner) = svc_on_plan(Plan::Free).await; // 10 guests / event
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+        let batch: Vec<NewGuest> = (0..11)
+            .map(|i| guest(&format!("g{i}"), InviteChannel::Print))
+            .collect();
+        assert!(matches!(
+            svc.add_guests_bulk(owner, ev.id, batch).await,
+            Err(DomainError::LimitReached(_))
+        ));
+        // Atomic: no partial insert up to the cap.
+        assert!(svc.list_guests(owner, ev.id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn bulk_add_rejects_an_empty_batch() {
+        let (svc, owner) = svc_on_plan(Plan::Max).await;
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+        assert!(matches!(
+            svc.add_guests_bulk(owner, ev.id, vec![]).await,
+            Err(DomainError::InvalidInput(_))
+        ));
     }
 }

@@ -3,7 +3,7 @@
 // failures — keeping the "missing" features out of the components.
 
 import { ApiError, guests as guestsApi, invites } from '$lib/api';
-import type { BatchSendReport, CreateGuest, Guest, InviteChannel, SendResult } from '$lib/api';
+import type { BatchSendReport, Guest, InviteChannel, SendResult } from '$lib/api';
 
 const CONCURRENCY = 4;
 
@@ -36,12 +36,6 @@ function errText(reason: unknown): string {
 export interface BulkOutcome {
 	ok: number;
 	failed: number;
-}
-
-/** Create many guests (e.g. from a CSV import). */
-export async function importMany(eventId: string, rows: CreateGuest[]): Promise<BulkOutcome> {
-	const settled = await mapSettled(rows, CONCURRENCY, (row) => guestsApi.create(eventId, row));
-	return tally(settled);
 }
 
 /** Switch the channel of many guests. */

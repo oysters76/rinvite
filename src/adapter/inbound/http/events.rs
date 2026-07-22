@@ -24,6 +24,7 @@ pub fn router() -> Router<AppState> {
             get(get_event).patch(update_event).delete(delete_event),
         )
         .route("/events/{id}/guests", post(add_guest).get(list_guests))
+        .route("/events/{id}/guests/bulk", post(add_guests_bulk))
         .route(
             "/events/{id}/guests/{gid}",
             get(get_guest).patch(update_guest).delete(delete_guest),
@@ -263,6 +264,42 @@ async fn add_guest(
         Json(guest_response(guest, &state.public_base_url)),
     )
         .into_response())
+}
+
+/// A batch of guests to add to an event in one atomic request.
+#[derive(Deserialize)]
+struct BulkCreateGuestsRequest {
+    guests: Vec<CreateGuestRequest>,
+}
+
+async fn add_guests_bulk(
+    AuthUser(owner_id): AuthUser,
+    State(state): State<AppState>,
+    Path(event_id): Path<Uuid>,
+    Json(body): Json<BulkCreateGuestsRequest>,
+) -> Result<Response, ApiError> {
+    let details = body
+        .guests
+        .into_iter()
+        .map(|g| {
+            Ok(NewGuest {
+                name: g.name,
+                channel: parse_channel(&g.channel)?,
+                email: g.email,
+                phone: g.phone,
+                max_party_size: g.max_party_size,
+            })
+        })
+        .collect::<Result<Vec<_>, DomainError>>()?;
+    let guests = state
+        .events
+        .add_guests_bulk(owner_id, event_id, details)
+        .await?;
+    let body: Vec<GuestResponse> = guests
+        .into_iter()
+        .map(|g| guest_response(g, &state.public_base_url))
+        .collect();
+    Ok((StatusCode::CREATED, Json(body)).into_response())
 }
 
 async fn list_guests(

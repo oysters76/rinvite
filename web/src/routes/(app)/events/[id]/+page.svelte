@@ -420,7 +420,7 @@
 	{contactEmail}
 	message={limitMessage}
 />
-<CsvImportDialog bind:open={showCsv} {eventId} onimported={refresh} />
+<CsvImportDialog bind:open={showCsv} {eventId} onimported={refresh} onlimit={onLimit} />
 <ConfirmDialog
 	bind:open={confirm.open}
 	title={confirm.title}

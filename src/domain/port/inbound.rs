@@ -60,6 +60,14 @@ pub trait EventService: Send + Sync {
         event_id: Uuid,
         details: NewGuest,
     ) -> Result<Guest, DomainError>;
+    /// Add many guests in one atomic batch — either every row is added or none
+    /// is (invalid row, or the batch would exceed the plan's guest cap).
+    async fn add_guests_bulk(
+        &self,
+        owner_id: Uuid,
+        event_id: Uuid,
+        details: Vec<NewGuest>,
+    ) -> Result<Vec<Guest>, DomainError>;
     async fn list_guests(&self, owner_id: Uuid, event_id: Uuid) -> Result<Vec<Guest>, DomainError>;
     async fn get_guest(
         &self,

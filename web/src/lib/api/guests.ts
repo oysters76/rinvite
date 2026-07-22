@@ -5,6 +5,8 @@ export const guests = {
 	list: (eventId: string) => get<Guest[]>(`/events/${eventId}/guests`),
 	create: (eventId: string, data: CreateGuest) =>
 		post<Guest>(`/events/${eventId}/guests`, data),
+	bulkCreate: (eventId: string, rows: CreateGuest[]) =>
+		post<Guest[]>(`/events/${eventId}/guests/bulk`, { guests: rows }),
 	get: (eventId: string, guestId: string) =>
 		get<Guest>(`/events/${eventId}/guests/${guestId}`),
 	update: (eventId: string, guestId: string, data: UpdateGuest) =>

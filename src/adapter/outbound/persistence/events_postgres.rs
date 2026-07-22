@@ -185,6 +185,36 @@ impl GuestRepository for PostgresEventStore {
         Ok(())
     }
 
+    async fn save_many(&self, guests: &[Guest]) -> Result<(), DomainError> {
+        // One transaction so a failure part-way rolls the whole batch back —
+        // callers rely on all-or-nothing semantics.
+        let mut tx = self.pool.begin().await.map_err(repo_err)?;
+        for g in guests {
+            sqlx::query(
+                "INSERT INTO guests (id, event_id, name, channel, email, phone, max_party_size, \
+                 invite_token, rsvp_status, party_size, responded_at, created_at) \
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+            )
+            .bind(g.id)
+            .bind(g.event_id)
+            .bind(&g.name)
+            .bind(g.channel.as_str())
+            .bind(&g.email)
+            .bind(&g.phone)
+            .bind(g.max_party_size as i32)
+            .bind(&g.invite_token)
+            .bind(g.rsvp_status.as_str())
+            .bind(g.party_size.map(|p| p as i32))
+            .bind(g.responded_at)
+            .bind(g.created_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(repo_err)?;
+        }
+        tx.commit().await.map_err(repo_err)?;
+        Ok(())
+    }
+
     async fn find(&self, id: Uuid) -> Result<Option<Guest>, DomainError> {
         let row = sqlx::query("SELECT * FROM guests WHERE id = $1")
             .bind(id)
