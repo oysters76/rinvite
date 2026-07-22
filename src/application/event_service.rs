@@ -163,9 +163,7 @@ impl EventService for EventServiceImpl {
         // request can't be turned into a huge write.
         const MAX_BULK: usize = 500;
         if details.is_empty() {
-            return Err(DomainError::InvalidInput(
-                "no guests to import".to_owned(),
-            ));
+            return Err(DomainError::InvalidInput("no guests to import".to_owned()));
         }
         if details.len() > MAX_BULK {
             return Err(DomainError::InvalidInput(format!(

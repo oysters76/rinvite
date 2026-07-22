@@ -67,7 +67,10 @@ impl AccountTemplates {
             upgrade_subject: load("UPGRADE_EMAIL_TEMPLATE_SUBJECT", DEFAULT_UPGRADE_SUBJECT)?,
             approval_html: load("ACCOUNT_APPROVAL_TEMPLATE_HTML", DEFAULT_APPROVAL_HTML)?,
             approval_text: load("ACCOUNT_APPROVAL_TEMPLATE_TEXT", DEFAULT_APPROVAL_TEXT)?,
-            approval_subject: load("ACCOUNT_APPROVAL_TEMPLATE_SUBJECT", DEFAULT_APPROVAL_SUBJECT)?,
+            approval_subject: load(
+                "ACCOUNT_APPROVAL_TEMPLATE_SUBJECT",
+                DEFAULT_APPROVAL_SUBJECT,
+            )?,
         })
     }
 
@@ -111,9 +114,7 @@ impl AccountTemplates {
             ("requested_at", requested_at.to_owned()),
         ];
         RenderedEmail {
-            subject: fill(&self.approval_subject, &vars, false)
-                .trim()
-                .to_owned(),
+            subject: fill(&self.approval_subject, &vars, false).trim().to_owned(),
             html: fill(&self.approval_html, &vars, true),
             text: fill(&self.approval_text, &vars, false),
         }

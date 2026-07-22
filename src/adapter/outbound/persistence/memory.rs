@@ -65,8 +65,7 @@ impl UserRepository for InMemoryUserRepository {
         // Keep fully-approved accounts (any age) and anything created on/after
         // the cutoff; drop stale, not-fully-approved accounts.
         users.retain(|_, u| {
-            let fully_approved =
-                u.email_verified && u.approval_status == ApprovalStatus::Approved;
+            let fully_approved = u.email_verified && u.approval_status == ApprovalStatus::Approved;
             fully_approved || u.created_at >= cutoff
         });
         Ok((before - users.len()) as u64)
@@ -89,15 +88,22 @@ mod tests {
         let cutoff = Utc.with_ymd_and_hms(2026, 7, 8, 0, 0, 0).unwrap();
 
         // Old + still pending -> deleted.
-        let old_pending = user_at("old@x.com", Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap());
+        let old_pending = user_at(
+            "old@x.com",
+            Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap(),
+        );
         // Old but fully approved -> kept.
-        let mut old_approved =
-            user_at("keep@x.com", Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap());
+        let mut old_approved = user_at(
+            "keep@x.com",
+            Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap(),
+        );
         old_approved.email_verified = true;
         old_approved.approve();
         // Recent + pending (created after cutoff) -> kept.
-        let recent_pending =
-            user_at("new@x.com", Utc.with_ymd_and_hms(2026, 7, 20, 0, 0, 0).unwrap());
+        let recent_pending = user_at(
+            "new@x.com",
+            Utc.with_ymd_and_hms(2026, 7, 20, 0, 0, 0).unwrap(),
+        );
 
         repo.save(&old_pending).await.unwrap();
         repo.save(&old_approved).await.unwrap();
