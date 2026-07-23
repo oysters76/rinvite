@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures::StreamExt;
 use uuid::Uuid;
 
 use crate::domain::error::DomainError;
@@ -254,7 +255,12 @@ impl EventService for EventServiceImpl {
     ) -> Result<Vec<u8>, DomainError> {
         let event = self.owned_event(owner_id, event_id).await?;
         let guest = self.guest_of(event_id, guest_id).await?;
-        self.pdf.render(&event, &guest)
+        // PDF rendering is synchronous and CPU-heavy; run it on the blocking pool
+        // so it never stalls the async worker threads (see `render_print_batch`).
+        let pdf = Arc::clone(&self.pdf);
+        tokio::task::spawn_blocking(move || pdf.render(&event, &guest))
+            .await
+            .map_err(|e| DomainError::Pdf(format!("pdf render task failed: {e}")))?
     }
 
     async fn send_invite(
@@ -288,7 +294,13 @@ impl EventService for EventServiceImpl {
                 "event has no print guests to render".to_owned(),
             ));
         }
-        self.pdf.render_all(&event, &print_guests)
+        // Rendering a whole batch is synchronous, CPU- and memory-heavy work.
+        // Offload it to the blocking pool so a large batch can't freeze the async
+        // runtime (and its health-check endpoint) on a single-vCPU instance.
+        let pdf = Arc::clone(&self.pdf);
+        tokio::task::spawn_blocking(move || pdf.render_all(&event, &print_guests))
+            .await
+            .map_err(|e| DomainError::Pdf(format!("pdf render task failed: {e}")))?
     }
 
     async fn send_einvite_batch(
@@ -305,29 +317,49 @@ impl EventService for EventServiceImpl {
             .filter(|g| g.channel == InviteChannel::EInvite)
             .collect();
 
-        let mut results = Vec::with_capacity(einvite_guests.len());
-        let (mut sent, mut failed) = (0usize, 0usize);
-        // Sequential: one guest at a time, and a single failure never aborts
-        // the batch.
-        for guest in &einvite_guests {
-            let url = format!("{}/i/{}", self.public_base_url, guest.invite_token);
-            let (status, detail) = match self.sender.send(&event, guest, &url).await {
-                Ok(()) => {
-                    sent += 1;
-                    (SendStatus::Sent, None)
-                }
-                Err(e) => {
-                    failed += 1;
-                    (SendStatus::Failed, Some(e.to_string()))
-                }
-            };
-            results.push(SendResult {
-                guest_id: guest.id,
-                guest_name: guest.name.clone(),
-                status,
-                detail,
-            });
-        }
+        // Send concurrently (bounded) instead of one-at-a-time: each send is a
+        // provider round-trip, so sequential wall-clock was `latency × guests`.
+        // A single failure never aborts the batch — every guest yields a result.
+        // Each future owns its inputs (cloned `Guest`, shared `Arc<Event>`/sender)
+        // so the async blocks don't borrow the loop variable — that borrow trips
+        // the higher-ranked-lifetime check on stream combinators.
+        let concurrency = einvite_send_concurrency();
+        let event = Arc::new(event);
+        let sends = einvite_guests.iter().cloned().enumerate().map(|(i, guest)| {
+            let event = Arc::clone(&event);
+            let sender = Arc::clone(&self.sender);
+            let base_url = self.public_base_url.clone();
+            async move {
+                let url = format!("{}/i/{}", base_url, guest.invite_token);
+                let (status, detail) = match sender.send(&event, &guest, &url).await {
+                    Ok(()) => (SendStatus::Sent, None),
+                    Err(e) => (SendStatus::Failed, Some(e.to_string())),
+                };
+                (
+                    i,
+                    SendResult {
+                        guest_id: guest.id,
+                        guest_name: guest.name,
+                        status,
+                        detail,
+                    },
+                )
+            }
+        });
+        let mut indexed: Vec<(usize, SendResult)> = futures::stream::iter(sends)
+            .buffer_unordered(concurrency)
+            .collect()
+            .await;
+
+        // `buffer_unordered` yields out of order — restore guest order so the
+        // report is deterministic and matches the guest list.
+        indexed.sort_by_key(|(i, _)| *i);
+        let results: Vec<SendResult> = indexed.into_iter().map(|(_, r)| r).collect();
+        let sent = results
+            .iter()
+            .filter(|r| r.status == SendStatus::Sent)
+            .count();
+        let failed = results.len() - sent;
 
         Ok(BatchSendReport {
             total: einvite_guests.len(),
@@ -336,6 +368,17 @@ impl EventService for EventServiceImpl {
             results,
         })
     }
+}
+
+/// Max concurrent e-invite sends, from `EINVITE_SEND_CONCURRENCY` (default 8).
+/// Bounded so a large guest list can't overwhelm provider rate limits or the
+/// shared vCPU. A non-numeric or zero value falls back to the default.
+fn einvite_send_concurrency() -> usize {
+    std::env::var("EINVITE_SEND_CONCURRENCY")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(8)
 }
 
 #[cfg(test)]
@@ -393,6 +436,30 @@ mod tests {
     impl Clock for FixedClock {
         fn now(&self) -> DateTime<Utc> {
             self.0
+        }
+    }
+
+    /// A clock that advances one second per call, so guests added in sequence get
+    /// strictly increasing `created_at` and therefore a deterministic
+    /// `list_by_event` order to assert the batch report against.
+    struct SeqClock(std::sync::atomic::AtomicI64);
+    impl Clock for SeqClock {
+        fn now(&self) -> DateTime<Utc> {
+            let n = self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Utc.timestamp_opt(1_700_000_000 + n, 0).unwrap()
+        }
+    }
+
+    /// Delivers successfully but sleeps longer for lower-numbered guest names
+    /// (`g0` sleeps longest), so completions arrive in the reverse of the send
+    /// order — proving the report is re-sorted back into guest order.
+    struct ReverseDelaySender;
+    #[async_trait]
+    impl InviteSender for ReverseDelaySender {
+        async fn send(&self, _event: &Event, guest: &Guest, _url: &str) -> Result<(), DomainError> {
+            let n: u64 = guest.name.trim_start_matches('g').parse().unwrap_or(0);
+            tokio::time::sleep(std::time::Duration::from_millis((20 - n) * 5)).await;
+            Ok(())
         }
     }
 
@@ -479,6 +546,40 @@ mod tests {
             svc.send_einvite_batch(Uuid::new_v4(), ev.id).await,
             Err(DomainError::NotFound(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn bulk_send_preserves_guest_order_despite_concurrency() {
+        let store = Arc::new(InMemoryEventStore::new());
+        let clock: Arc<dyn Clock> = Arc::new(SeqClock(std::sync::atomic::AtomicI64::new(0)));
+        let (users, owner) = user_on_plan(Plan::Max).await;
+        let svc = EventServiceImpl::new(
+            store.clone(),
+            store.clone(),
+            users,
+            Arc::new(FakePdf {
+                last_batch: Mutex::new(0),
+            }),
+            // Later guests complete first; the report must still come back in order.
+            Arc::new(ReverseDelaySender),
+            clock,
+            "http://x".into(),
+        );
+
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+        // Add g0..g5 in order; SeqClock gives each a strictly increasing
+        // created_at, so list_by_event returns them g0..g5.
+        for i in 0..6 {
+            svc.add_guest(owner, ev.id, guest(&format!("g{i}"), InviteChannel::EInvite))
+                .await
+                .unwrap();
+        }
+
+        let report = svc.send_einvite_batch(owner, ev.id).await.unwrap();
+        assert_eq!(report.sent, 6);
+        assert_eq!(report.failed, 0);
+        let names: Vec<&str> = report.results.iter().map(|r| r.guest_name.as_str()).collect();
+        assert_eq!(names, ["g0", "g1", "g2", "g3", "g4", "g5"]);
     }
 
     /// Build a service on the `Max` plan (no caps) plus its owner id.

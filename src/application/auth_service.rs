@@ -32,6 +32,7 @@ pub struct AuthServiceImpl {
 }
 
 impl AuthServiceImpl {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         users: Arc<dyn UserRepository>,
         hasher: Arc<dyn PasswordHasher>,

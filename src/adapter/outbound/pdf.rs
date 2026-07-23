@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use std::io::Cursor;
 
 use printpdf::{
-    BuiltinFont, Color, Image, ImageTransform, IndirectFontRef, Mm, PdfDocument, PdfLayerReference,
-    Rgb, image_crate,
+    BuiltinFont, Color, FontId, Mm, Op, ParsedFont, PdfDocument, PdfFontHandle, PdfPage,
+    PdfSaveOptions, Point, Pt, RawImage, RawImageData, RawImageFormat, Rgb, TextItem, TextMatrix,
+    XObjectId, XObjectTransform,
 };
 use serde::Deserialize;
 
@@ -77,11 +77,10 @@ fn default_color() -> [f32; 3] {
 
 // ===== Renderer =============================================================
 
-/// A loaded font: its raw bytes (re-added to each `PdfDocument`) kept alongside
-/// its parsed metrics for width measurement.
+/// A loaded font: its raw bytes, re-added to each `PdfDocument` and re-parsed
+/// into a `ttf_parser::Face` once per batch for width measurement.
 struct FontAsset {
     bytes: Vec<u8>,
-    units_per_em: f32,
 }
 
 /// A5-portrait default when there's no config.
@@ -144,16 +143,10 @@ impl TemplatePdfRenderer {
         let mut fonts = HashMap::new();
         for (name, font_path) in &cfg.fonts {
             let bytes = read_file(font_path)?;
-            let face = ttf_parser::Face::parse(&bytes, 0)
+            // Validate the font up front so a bad file fails at load, not render.
+            ttf_parser::Face::parse(&bytes, 0)
                 .map_err(|e| DomainError::Pdf(format!("cannot parse font {font_path}: {e}")))?;
-            let units_per_em = face.units_per_em() as f32;
-            fonts.insert(
-                name.clone(),
-                FontAsset {
-                    bytes,
-                    units_per_em,
-                },
-            );
+            fonts.insert(name.clone(), FontAsset { bytes });
         }
 
         Ok(LoadedConfig {
@@ -192,11 +185,12 @@ struct PageGeom {
     page_h: f32,
     sx: f32,
     sy: f32,
-    rgb: image_crate::DynamicImage,
+    /// The template decoded once, flattened to opaque RGB, as a printpdf image.
+    image: RawImage,
 }
 
 fn page_geom(cfg: &LoadedConfig) -> Result<PageGeom, DomainError> {
-    let dynamic = image_crate::load_from_memory(&cfg.template_png)
+    let dynamic = image::load_from_memory(&cfg.template_png)
         .map_err(|e| DomainError::Pdf(format!("cannot decode template image: {e}")))?;
     let px_to_mm = 25.4 / cfg.dpi;
     let natural_w = dynamic.width() as f32 * px_to_mm;
@@ -205,15 +199,24 @@ fn page_geom(cfg: &LoadedConfig) -> Result<PageGeom, DomainError> {
         Some([w, h]) => (w, h),
         None => (natural_w, natural_h),
     };
-    // Flatten to RGB — printpdf 0.7 renders a PNG alpha channel as transparency,
-    // which would hide the whole card.
-    let rgb = image_crate::DynamicImage::ImageRgb8(dynamic.to_rgb8());
+    // Flatten to RGB — a PNG alpha channel would otherwise render as transparency
+    // and hide the whole card. Build the printpdf `RawImage` directly from the
+    // opaque bytes so it can be embedded once and shared across every page.
+    let rgb = dynamic.to_rgb8();
+    let (px_w, px_h) = (rgb.width() as usize, rgb.height() as usize);
+    let image = RawImage {
+        pixels: RawImageData::U8(rgb.into_raw()),
+        width: px_w,
+        height: px_h,
+        data_format: RawImageFormat::RGB8,
+        tag: Vec::new(),
+    };
     Ok(PageGeom {
         page_w,
         page_h,
         sx: page_w / natural_w,
         sy: page_h / natural_h,
-        rgb,
+        image,
     })
 }
 
@@ -223,165 +226,219 @@ fn render_all_from_config(
     guests: &[Guest],
 ) -> Result<Vec<u8>, DomainError> {
     let geom = page_geom(cfg)?;
-    let (doc, page1, layer1) = PdfDocument::new(
-        "Wedding Invitation",
-        Mm(geom.page_w),
-        Mm(geom.page_h),
-        "Invitation",
-    );
+    let mut doc = PdfDocument::new("Wedding Invitation");
 
-    // Fonts are document-level: add them once and reuse across every page.
-    let mut refs: HashMap<&str, IndirectFontRef> = HashMap::new();
+    // Embed the template image ONCE and reference it from every page. This is the
+    // whole point of the printpdf 0.12 op model: a single shared XObject instead
+    // of a full raster per guest, so batch memory and file size stay ~1x the
+    // template regardless of guest count.
+    let background = doc.add_image(&geom.image);
+
+    // Add each font once (embedded in the document), and parse its `Face` once for
+    // width measurement (kept from before — low-risk and already works).
+    let mut font_ids: HashMap<&str, FontId> = HashMap::new();
+    let mut faces: HashMap<&str, ttf_parser::Face> = HashMap::new();
     for (name, asset) in &cfg.fonts {
-        let font = doc
-            .add_external_font(Cursor::new(asset.bytes.as_slice()))
-            .map_err(|e| DomainError::Pdf(format!("cannot load font '{name}': {e}")))?;
-        refs.insert(name.as_str(), font);
+        let mut warnings = Vec::new();
+        let parsed = ParsedFont::from_bytes(&asset.bytes, 0, &mut warnings)
+            .ok_or_else(|| DomainError::Pdf(format!("cannot parse font '{name}'")))?;
+        font_ids.insert(name.as_str(), doc.add_font(&parsed));
+        let face = ttf_parser::Face::parse(&asset.bytes, 0)
+            .map_err(|e| DomainError::Pdf(format!("cannot parse font '{name}': {e}")))?;
+        faces.insert(name.as_str(), face);
     }
 
-    for (i, guest) in guests.iter().enumerate() {
-        let layer = if i == 0 {
-            doc.get_page(page1).get_layer(layer1)
-        } else {
-            let (p, l) = doc.add_page(Mm(geom.page_w), Mm(geom.page_h), "Invitation");
-            doc.get_page(p).get_layer(l)
-        };
-        draw_config_page(&layer, cfg, &geom, &refs, event, guest)?;
-    }
+    // One page per guest: background reference + positioned text, all as `Op`s.
+    let pages: Vec<PdfPage> = guests
+        .iter()
+        .map(|guest| {
+            let ops = config_page_ops(cfg, &geom, &background, &font_ids, &faces, event, guest)?;
+            Ok(PdfPage::new(Mm(geom.page_w), Mm(geom.page_h), ops))
+        })
+        .collect::<Result<_, DomainError>>()?;
 
-    doc.save_to_bytes()
-        .map_err(|e| DomainError::Pdf(format!("cannot serialize PDF: {e}")))
+    let mut warnings = Vec::new();
+    Ok(doc
+        .with_pages(pages)
+        .save(&PdfSaveOptions::default(), &mut warnings))
 }
 
-/// Draw one guest's card (background + positioned text) onto a page's layer.
-fn draw_config_page(
-    layer: &PdfLayerReference,
+/// Build the ops for one guest's card: background reference + positioned text.
+#[allow(clippy::too_many_arguments)]
+fn config_page_ops(
     cfg: &LoadedConfig,
     geom: &PageGeom,
-    refs: &HashMap<&str, IndirectFontRef>,
+    background: &XObjectId,
+    font_ids: &HashMap<&str, FontId>,
+    faces: &HashMap<&str, ttf_parser::Face>,
     event: &Event,
     guest: &Guest,
-) -> Result<(), DomainError> {
+) -> Result<Vec<Op>, DomainError> {
+    let mut ops = Vec::new();
+
     // Background template, scaled to fill the page.
-    Image::from_dynamic_image(&geom.rgb).add_to_layer(
-        layer.clone(),
-        ImageTransform {
-            translate_x: Some(Mm(0.0)),
-            translate_y: Some(Mm(0.0)),
+    ops.push(Op::UseXobject {
+        id: background.clone(),
+        transform: XObjectTransform {
+            translate_x: Some(Pt(0.0)),
+            translate_y: Some(Pt(0.0)),
             scale_x: Some(geom.sx),
             scale_y: Some(geom.sy),
             dpi: Some(cfg.dpi),
-            ..Default::default()
+            rotate: None,
+            no_auto_scale: false,
         },
-    );
+    });
 
     let tokens = resolve_tokens(event, guest);
     for el in &cfg.elements {
-        let asset = cfg
-            .fonts
-            .get(&el.font)
+        let face = faces
+            .get(el.font.as_str())
             .ok_or_else(|| DomainError::Pdf(format!("element uses unknown font '{}'", el.font)))?;
-        let font = &refs[el.font.as_str()];
+        let font_id = font_ids
+            .get(el.font.as_str())
+            .ok_or_else(|| DomainError::Pdf(format!("element uses unknown font '{}'", el.font)))?;
 
         let text = apply_transform(substitute(&el.template, &tokens), el.transform);
         if text.is_empty() {
             continue;
         }
 
-        layer.set_fill_color(Color::Rgb(Rgb::new(
-            el.color[0],
-            el.color[1],
-            el.color[2],
-            None,
-        )));
-
+        let color = Color::Rgb(Rgb::new(el.color[0], el.color[1], el.color[2], None));
         // Anchor scales with the page; font size and measured text width do not
         // (text isn't part of the stretched image).
         let x_anchor = el.x_mm * geom.sx;
         let y_anchor = el.y_mm * geom.sy;
 
         if el.letter_spacing > 0.0 {
-            draw_spaced(
-                layer,
+            push_spaced_ops(
+                &mut ops,
                 &text,
                 el,
-                asset,
-                font,
+                face,
+                font_id,
+                color,
                 x_anchor,
                 y_anchor,
                 el.letter_spacing * geom.sx,
             );
         } else {
-            let width = text_width_mm(&text, asset, el.size);
+            let width = text_width_mm(&text, face, el.size);
             let x = aligned_x(x_anchor, width, el.align);
-            layer.use_text(&text, el.size, Mm(x), Mm(y_anchor), font);
+            ops.push(Op::StartTextSection);
+            ops.push(Op::SetFont {
+                font: PdfFontHandle::External(font_id.clone()),
+                size: Pt(el.size),
+            });
+            ops.push(Op::SetFillColor { col: color });
+            ops.push(Op::SetTextCursor {
+                pos: Point {
+                    x: Mm(x).into(),
+                    y: Mm(y_anchor).into(),
+                },
+            });
+            ops.push(Op::ShowText {
+                items: vec![TextItem::Text(text)],
+            });
+            ops.push(Op::EndTextSection);
         }
     }
-    Ok(())
+    Ok(ops)
 }
 
-/// Draw text glyph-by-glyph, inserting `spacing` mm between characters.
+/// Emit ops to draw text glyph-by-glyph, inserting `spacing` mm between
+/// characters. Each glyph is positioned with its own text cursor, exactly
+/// reproducing the pre-migration per-glyph placement.
 #[allow(clippy::too_many_arguments)]
-fn draw_spaced(
-    layer: &PdfLayerReference,
+fn push_spaced_ops(
+    ops: &mut Vec<Op>,
     text: &str,
     el: &Element,
-    asset: &FontAsset,
-    font: &IndirectFontRef,
+    face: &ttf_parser::Face,
+    font_id: &FontId,
+    color: Color,
     x_anchor: f32,
     y_anchor: f32,
     spacing: f32,
 ) {
     // Total width including the added tracking, for alignment.
     let chars: Vec<char> = text.chars().collect();
-    let glyphs_w = text_width_mm(text, asset, el.size);
+    let glyphs_w = text_width_mm(text, face, el.size);
     let total = glyphs_w + spacing * (chars.len().saturating_sub(1)) as f32;
     let mut x = aligned_x(x_anchor, total, el.align);
+
+    ops.push(Op::StartTextSection);
+    ops.push(Op::SetFont {
+        font: PdfFontHandle::External(font_id.clone()),
+        size: Pt(el.size),
+    });
+    ops.push(Op::SetFillColor { col: color });
     for c in chars {
-        let s = c.to_string();
-        layer.use_text(&s, el.size, Mm(x), Mm(y_anchor), font);
-        x += char_width_mm(c, asset, el.size) + spacing;
+        // `SetTextMatrix::Translate` sets an ABSOLUTE position (relative to the
+        // page); a per-glyph `SetTextCursor` (`Td`) would be relative and the
+        // offsets would accumulate, running the text off the page.
+        ops.push(Op::SetTextMatrix {
+            matrix: TextMatrix::Translate(Mm(x).into(), Mm(y_anchor).into()),
+        });
+        ops.push(Op::ShowText {
+            items: vec![TextItem::Text(c.to_string())],
+        });
+        x += char_width_mm(c, face, el.size) + spacing;
     }
+    ops.push(Op::EndTextSection);
 }
 
 /// Zero-config fallback: plain A5 pages with the builtin Times font, one per
 /// guest.
 fn render_all_plain(event: &Event, guests: &[Guest]) -> Result<Vec<u8>, DomainError> {
-    let (doc, page1, layer1) = PdfDocument::new(
-        "Wedding Invitation",
-        Mm(DEFAULT_W_MM),
-        Mm(DEFAULT_H_MM),
-        "Invitation",
-    );
-    let font = doc
-        .add_builtin_font(BuiltinFont::TimesRoman)
-        .map_err(|e| DomainError::Pdf(format!("cannot load builtin font: {e}")))?;
+    let mut doc = PdfDocument::new("Wedding Invitation");
+    // Builtin (standard-14) fonts need no registration; reference by handle.
+    let font = PdfFontHandle::Builtin(BuiltinFont::TimesRoman);
+    let black = Color::Rgb(Rgb::new(0.0, 0.0, 0.0, None));
 
-    for (i, guest) in guests.iter().enumerate() {
-        let layer = if i == 0 {
-            doc.get_page(page1).get_layer(layer1)
-        } else {
-            let (p, l) = doc.add_page(Mm(DEFAULT_W_MM), Mm(DEFAULT_H_MM), "Invitation");
-            doc.get_page(p).get_layer(l)
-        };
-        let tokens = resolve_tokens(event, guest);
-        let lines = [
-            ("{bride_name} & {groom_name}", 28.0, 185.0),
-            ("{guest_name}", 18.0, 165.0),
-            ("{event_date_full}", 14.0, 145.0),
-            ("From {start_time} to {end_time}", 14.0, 133.0),
-            ("{hall_name}", 14.0, 118.0),
-            ("{venue_name}", 12.0, 108.0),
-            ("Admits up to {max_party_size}", 12.0, 90.0),
-            ("RSVP by {rsvp_by}", 12.0, 75.0),
-        ];
-        for (tpl, size, y) in lines {
-            let text = substitute(tpl, &tokens);
-            layer.use_text(&text, size, Mm(20.0), Mm(y), &font);
-        }
-    }
-    doc.save_to_bytes()
-        .map_err(|e| DomainError::Pdf(format!("cannot serialize PDF: {e}")))
+    let lines = [
+        ("{bride_name} & {groom_name}", 28.0, 185.0),
+        ("{guest_name}", 18.0, 165.0),
+        ("{event_date_full}", 14.0, 145.0),
+        ("From {start_time} to {end_time}", 14.0, 133.0),
+        ("{hall_name}", 14.0, 118.0),
+        ("{venue_name}", 12.0, 108.0),
+        ("Admits up to {max_party_size}", 12.0, 90.0),
+        ("RSVP by {rsvp_by}", 12.0, 75.0),
+    ];
+
+    let pages: Vec<PdfPage> = guests
+        .iter()
+        .map(|guest| {
+            let tokens = resolve_tokens(event, guest);
+            let mut ops = Vec::new();
+            for (tpl, size, y) in lines {
+                let text = substitute(tpl, &tokens);
+                ops.push(Op::StartTextSection);
+                ops.push(Op::SetFont {
+                    font: font.clone(),
+                    size: Pt(size),
+                });
+                ops.push(Op::SetFillColor { col: black.clone() });
+                ops.push(Op::SetTextCursor {
+                    pos: Point {
+                        x: Mm(20.0).into(),
+                        y: Mm(y).into(),
+                    },
+                });
+                ops.push(Op::ShowText {
+                    items: vec![TextItem::Text(text)],
+                });
+                ops.push(Op::EndTextSection);
+            }
+            PdfPage::new(Mm(DEFAULT_W_MM), Mm(DEFAULT_H_MM), ops)
+        })
+        .collect();
+
+    let mut warnings = Vec::new();
+    Ok(doc
+        .with_pages(pages)
+        .save(&PdfSaveOptions::default(), &mut warnings))
 }
 
 // ===== Text helpers =========================================================
@@ -394,33 +451,27 @@ fn aligned_x(x: f32, width_mm: f32, align: Align) -> f32 {
     }
 }
 
-fn char_width_mm(c: char, asset: &FontAsset, size_pt: f32) -> f32 {
-    let face = match ttf_parser::Face::parse(&asset.bytes, 0) {
-        Ok(f) => f,
-        Err(_) => return size_pt * 0.5 * 25.4 / 72.0, // rough fallback
-    };
+fn char_width_mm(c: char, face: &ttf_parser::Face, size_pt: f32) -> f32 {
+    let upm = face.units_per_em() as f32;
     let advance = face
         .glyph_index(c)
         .and_then(|g| face.glyph_hor_advance(g))
-        .unwrap_or((asset.units_per_em * 0.5) as u16) as f32;
+        .unwrap_or((upm * 0.5) as u16) as f32;
     // advance(units) / upm * size(pt) -> pt, then pt -> mm
-    advance / asset.units_per_em * size_pt * 25.4 / 72.0
+    advance / upm * size_pt * 25.4 / 72.0
 }
 
-fn text_width_mm(text: &str, asset: &FontAsset, size_pt: f32) -> f32 {
-    let face = match ttf_parser::Face::parse(&asset.bytes, 0) {
-        Ok(f) => f,
-        Err(_) => return text.chars().count() as f32 * size_pt * 0.5 * 25.4 / 72.0,
-    };
+fn text_width_mm(text: &str, face: &ttf_parser::Face, size_pt: f32) -> f32 {
+    let upm = face.units_per_em() as f32;
     let units: f32 = text
         .chars()
         .map(|c| {
             face.glyph_index(c)
                 .and_then(|g| face.glyph_hor_advance(g))
-                .unwrap_or((asset.units_per_em * 0.5) as u16) as f32
+                .unwrap_or((upm * 0.5) as u16) as f32
         })
         .sum();
-    units / asset.units_per_em * size_pt * 25.4 / 72.0
+    units / upm * size_pt * 25.4 / 72.0
 }
 
 fn apply_transform(s: String, t: Transform) -> String {
