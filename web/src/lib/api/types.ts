@@ -25,6 +25,10 @@ export interface Event {
 	bride_family_name: string;
 	groom_name: string;
 	groom_family_name: string;
+	/** RSVP contact number for the bride's side. */
+	bride_phone: string;
+	/** RSVP contact number for the groom's side. */
+	groom_phone: string;
 	/** ISO date, YYYY-MM-DD */
 	event_date: string;
 	/** HH:MM:SS */

@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { formatLkPhone, isCompleteLkPhone } from '$lib/format';
 	import { toast } from 'svelte-sonner';
 
 	let {
@@ -25,6 +26,8 @@
 		bride_family_name: '',
 		groom_name: '',
 		groom_family_name: '',
+		bride_phone: '',
+		groom_phone: '',
 		event_date: '',
 		start_time: '10:00',
 		end_time: '15:00',
@@ -47,9 +50,19 @@
 		return { ...rest };
 	}
 
+	// Block typed non-digits outright (letters/symbols) so the phone field only
+	// ever takes numbers. Paste still flows through — formatLkPhone strips it.
+	function blockNonDigit(e: InputEvent) {
+		if (e.inputType === 'insertText' && e.data && /\D/.test(e.data)) e.preventDefault();
+	}
+
 	function validate(): string | null {
 		const f = form;
 		if (!f.bride_name.trim() || !f.groom_name.trim()) return 'Bride and groom names are required.';
+		if (!f.bride_phone.trim() || !f.groom_phone.trim())
+			return 'Bride and groom phone numbers are required.';
+		if (!isCompleteLkPhone(f.bride_phone) || !isCompleteLkPhone(f.groom_phone))
+			return 'Phone numbers must be a full Sri Lankan number: +94 XX XXX XXXX.';
 		if (!f.event_date || !f.rsvp_by) return 'Event date and RSVP-by date are required.';
 		if (f.end_time <= f.start_time) return 'End time must be after start time.';
 		if (f.rsvp_by > f.event_date) return 'RSVP-by date must be on or before the event date.';
@@ -107,6 +120,30 @@
 				<div class="grid gap-1.5">
 					<Label for="gf">Groom's family name</Label>
 					<Input id="gf" bind:value={form.groom_family_name} />
+				</div>
+				<div class="grid gap-1.5">
+					<Label for="bp">Bride's phone</Label>
+					<Input
+						id="bp"
+						type="tel"
+						inputmode="numeric"
+						placeholder="+94 71 195 4412"
+						value={form.bride_phone}
+						onbeforeinput={blockNonDigit}
+						oninput={(e) => (form.bride_phone = formatLkPhone(e.currentTarget.value))}
+					/>
+				</div>
+				<div class="grid gap-1.5">
+					<Label for="gp">Groom's phone</Label>
+					<Input
+						id="gp"
+						type="tel"
+						inputmode="numeric"
+						placeholder="+94 77 267 5783"
+						value={form.groom_phone}
+						onbeforeinput={blockNonDigit}
+						oninput={(e) => (form.groom_phone = formatLkPhone(e.currentTarget.value))}
+					/>
 				</div>
 				<div class="grid gap-1.5">
 					<Label for="ed">Event date</Label>

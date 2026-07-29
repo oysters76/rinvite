@@ -283,6 +283,9 @@
 				<p class="text-muted-foreground mt-1 text-sm">
 					{fmtDate(event.event_date)} · {event.venue_name} · RSVP by {fmtDate(event.rsvp_by)}
 				</p>
+				<p class="text-muted-foreground mt-1 text-sm">
+					{event.bride_name}: {event.bride_phone} · {event.groom_name}: {event.groom_phone}
+				</p>
 			</div>
 			<div class="flex gap-2">
 				<Button variant="ghost" onclick={() => (showEditEvent = true)}>

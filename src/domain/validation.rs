@@ -79,6 +79,8 @@ pub fn validate_event(e: &NewEvent) -> Result<(), DomainError> {
     non_empty("bride family name", &e.bride_family_name)?;
     non_empty("groom name", &e.groom_name)?;
     non_empty("groom family name", &e.groom_family_name)?;
+    non_empty("bride phone", &e.bride_phone)?;
+    non_empty("groom phone", &e.groom_phone)?;
     non_empty("hall name", &e.hall_name)?;
     non_empty("venue name", &e.venue_name)?;
 
@@ -148,5 +150,37 @@ mod tests {
         assert!(validate_password("hunter2!").is_ok());
         assert!(validate_password("short").is_err());
         assert!(validate_password(&"x".repeat(PASSWORD_MAX_LEN + 1)).is_err());
+    }
+
+    fn valid_event() -> NewEvent {
+        use chrono::{NaiveDate, NaiveTime};
+        NewEvent {
+            bride_name: "Bride".into(),
+            bride_family_name: "BFam".into(),
+            groom_name: "Groom".into(),
+            groom_family_name: "GFam".into(),
+            bride_phone: "+94 71 195 4412".into(),
+            groom_phone: "+94 77 267 5783".into(),
+            event_date: NaiveDate::from_ymd_opt(2026, 9, 25).unwrap(),
+            start_time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end_time: NaiveTime::from_hms_opt(15, 0, 0).unwrap(),
+            hall_name: "Hall".into(),
+            venue_name: "Venue".into(),
+            rsvp_by: NaiveDate::from_ymd_opt(2026, 8, 20).unwrap(),
+            poruwa_ceremony_time: None,
+        }
+    }
+
+    #[test]
+    fn event_requires_couple_phones() {
+        assert!(validate_event(&valid_event()).is_ok());
+
+        let mut no_bride_phone = valid_event();
+        no_bride_phone.bride_phone = "  ".into();
+        assert!(validate_event(&no_bride_phone).is_err());
+
+        let mut no_groom_phone = valid_event();
+        no_groom_phone.groom_phone = String::new();
+        assert!(validate_event(&no_groom_phone).is_err());
     }
 }

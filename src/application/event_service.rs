@@ -325,27 +325,31 @@ impl EventService for EventServiceImpl {
         // the higher-ranked-lifetime check on stream combinators.
         let concurrency = einvite_send_concurrency();
         let event = Arc::new(event);
-        let sends = einvite_guests.iter().cloned().enumerate().map(|(i, guest)| {
-            let event = Arc::clone(&event);
-            let sender = Arc::clone(&self.sender);
-            let base_url = self.public_base_url.clone();
-            async move {
-                let url = format!("{}/i/{}", base_url, guest.invite_token);
-                let (status, detail) = match sender.send(&event, &guest, &url).await {
-                    Ok(()) => (SendStatus::Sent, None),
-                    Err(e) => (SendStatus::Failed, Some(e.to_string())),
-                };
-                (
-                    i,
-                    SendResult {
-                        guest_id: guest.id,
-                        guest_name: guest.name,
-                        status,
-                        detail,
-                    },
-                )
-            }
-        });
+        let sends = einvite_guests
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, guest)| {
+                let event = Arc::clone(&event);
+                let sender = Arc::clone(&self.sender);
+                let base_url = self.public_base_url.clone();
+                async move {
+                    let url = format!("{}/i/{}", base_url, guest.invite_token);
+                    let (status, detail) = match sender.send(&event, &guest, &url).await {
+                        Ok(()) => (SendStatus::Sent, None),
+                        Err(e) => (SendStatus::Failed, Some(e.to_string())),
+                    };
+                    (
+                        i,
+                        SendResult {
+                            guest_id: guest.id,
+                            guest_name: guest.name,
+                            status,
+                            detail,
+                        },
+                    )
+                }
+            });
         let mut indexed: Vec<(usize, SendResult)> = futures::stream::iter(sends)
             .buffer_unordered(concurrency)
             .collect()
@@ -469,6 +473,8 @@ mod tests {
             bride_family_name: "B".into(),
             groom_name: "C".into(),
             groom_family_name: "D".into(),
+            bride_phone: "+94 71 195 4412".into(),
+            groom_phone: "+94 77 267 5783".into(),
             event_date: NaiveDate::from_ymd_opt(2026, 12, 31).unwrap(),
             start_time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
             end_time: NaiveTime::from_hms_opt(15, 0, 0).unwrap(),
@@ -570,15 +576,23 @@ mod tests {
         // Add g0..g5 in order; SeqClock gives each a strictly increasing
         // created_at, so list_by_event returns them g0..g5.
         for i in 0..6 {
-            svc.add_guest(owner, ev.id, guest(&format!("g{i}"), InviteChannel::EInvite))
-                .await
-                .unwrap();
+            svc.add_guest(
+                owner,
+                ev.id,
+                guest(&format!("g{i}"), InviteChannel::EInvite),
+            )
+            .await
+            .unwrap();
         }
 
         let report = svc.send_einvite_batch(owner, ev.id).await.unwrap();
         assert_eq!(report.sent, 6);
         assert_eq!(report.failed, 0);
-        let names: Vec<&str> = report.results.iter().map(|r| r.guest_name.as_str()).collect();
+        let names: Vec<&str> = report
+            .results
+            .iter()
+            .map(|r| r.guest_name.as_str())
+            .collect();
         assert_eq!(names, ["g0", "g1", "g2", "g3", "g4", "g5"]);
     }
 

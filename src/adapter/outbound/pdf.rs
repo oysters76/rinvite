@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use printpdf::{
-    BuiltinFont, Color, FontId, Mm, Op, ParsedFont, PdfDocument, PdfFontHandle, PdfPage,
-    PdfSaveOptions, Point, Pt, RawImage, RawImageData, RawImageFormat, Rgb, TextItem, TextMatrix,
-    XObjectId, XObjectTransform,
+    BuiltinFont, Color, FontId, ImageCompression, ImageOptimizationOptions, Mm, Op, ParsedFont,
+    PdfDocument, PdfFontHandle, PdfPage, PdfSaveOptions, Point, Pt, RawImage, RawImageData,
+    RawImageFormat, Rgb, TextItem, TextMatrix, XObjectId, XObjectTransform,
 };
 use serde::Deserialize;
 
@@ -72,7 +72,8 @@ struct Element {
 }
 
 fn default_color() -> [f32; 3] {
-    [0.20, 0.15, 0.10]
+    // Palette "Ink" — see assets/pdf-config.json color plan.
+    [0.165, 0.122, 0.090]
 }
 
 // ===== Renderer =============================================================
@@ -220,6 +221,27 @@ fn page_geom(cfg: &LoadedConfig) -> Result<PageGeom, DomainError> {
     })
 }
 
+/// Save options that embed images at full resolution, losslessly.
+///
+/// `PdfSaveOptions::default()` sets `max_image_size: "2MB"`, which makes printpdf
+/// nearest-neighbour downscale our ~13 MB background (1792×2390 RGB8) to ~700 px
+/// and blur the card. We keep the native pixels and force lossless Flate (the
+/// `jpeg` feature is off, so no DCT path exists anyway). `image_optimization:
+/// None` would instead embed the pixels raw/uncompressed and bloat the file.
+fn lossless_save_options() -> PdfSaveOptions {
+    PdfSaveOptions {
+        image_optimization: Some(ImageOptimizationOptions {
+            quality: None,
+            max_image_size: None, // no downscale — keep native resolution
+            dither_greyscale: None,
+            convert_to_greyscale: Some(false),
+            auto_optimize: Some(false), // no greyscale/alpha rewriting
+            format: Some(ImageCompression::Flate), // explicit lossless
+        }),
+        ..PdfSaveOptions::default()
+    }
+}
+
 fn render_all_from_config(
     cfg: &LoadedConfig,
     event: &Event,
@@ -260,7 +282,7 @@ fn render_all_from_config(
     let mut warnings = Vec::new();
     Ok(doc
         .with_pages(pages)
-        .save(&PdfSaveOptions::default(), &mut warnings))
+        .save(&lossless_save_options(), &mut warnings))
 }
 
 /// Build the ops for one guest's card: background reference + positioned text.
@@ -438,7 +460,7 @@ fn render_all_plain(event: &Event, guests: &[Guest]) -> Result<Vec<u8>, DomainEr
     let mut warnings = Vec::new();
     Ok(doc
         .with_pages(pages)
-        .save(&PdfSaveOptions::default(), &mut warnings))
+        .save(&lossless_save_options(), &mut warnings))
 }
 
 // ===== Text helpers =========================================================
@@ -513,12 +535,12 @@ fn clock_time(t: chrono::NaiveTime) -> String {
     use chrono::Timelike;
     let h24 = t.hour();
     let (h12, ap) = match h24 {
-        0 => (12, "A.M."),
-        1..=11 => (h24, "A.M."),
-        12 => (12, "P.M."),
-        _ => (h24 - 12, "P.M."),
+        0 => (12, "AM"),
+        1..=11 => (h24, "AM"),
+        12 => (12, "PM"),
+        _ => (h24 - 12, "PM"),
     };
-    format!("{}.{:02} {}", h12, t.minute(), ap)
+    format!("{}:{:02} {}", h12, t.minute(), ap)
 }
 
 /// Build the placeholder -> value map for one event/guest.
@@ -529,6 +551,8 @@ fn resolve_tokens(e: &Event, g: &Guest) -> HashMap<&'static str, String> {
     m.insert("groom_name", e.groom_name.clone());
     m.insert("bride_family_name", e.bride_family_name.clone());
     m.insert("groom_family_name", e.groom_family_name.clone());
+    m.insert("bride_phone", e.bride_phone.clone());
+    m.insert("groom_phone", e.groom_phone.clone());
     m.insert("guest_name", g.name.clone());
     m.insert("day_name", e.event_date.format("%A").to_string());
     m.insert("day", e.event_date.day().to_string());
@@ -554,7 +578,12 @@ fn resolve_tokens(e: &Event, g: &Guest) -> HashMap<&'static str, String> {
     );
     m.insert(
         "rsvp_by",
-        format!("{} {}", ordinal(e.rsvp_by.day()), e.rsvp_by.format("%B")),
+        format!(
+            "{} {} {}",
+            e.rsvp_by.day(),
+            e.rsvp_by.format("%B"),
+            e.rsvp_by.format("%Y")
+        ),
     );
     m.insert("rsvp_by_full", e.rsvp_by.format("%A, %e %B %Y").to_string());
     m.insert("max_party_size", g.max_party_size.to_string());
@@ -581,20 +610,52 @@ mod tests {
         use chrono::NaiveTime;
         assert_eq!(
             clock_time(NaiveTime::from_hms_opt(10, 0, 0).unwrap()),
-            "10.00 A.M."
+            "10:00 AM"
         );
         assert_eq!(
             clock_time(NaiveTime::from_hms_opt(15, 30, 0).unwrap()),
-            "3.30 P.M."
+            "3:30 PM"
         );
         assert_eq!(
             clock_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()),
-            "12.00 A.M."
+            "12:00 AM"
         );
         assert_eq!(
             clock_time(NaiveTime::from_hms_opt(12, 0, 0).unwrap()),
-            "12.00 P.M."
+            "12:00 PM"
         );
+    }
+
+    #[test]
+    fn background_embeds_at_full_resolution_lossless() {
+        // Build the RawImage exactly as `page_geom` does, from the real template,
+        // then save with our lossless options and inspect the emitted XObject.
+        let png = std::fs::read("assets/templates/floral-gold.png").unwrap();
+        let dynamic = image::load_from_memory(&png).unwrap();
+        let (w, h) = (dynamic.width() as usize, dynamic.height() as usize);
+        let rgb = dynamic.to_rgb8();
+        let raw = RawImage {
+            pixels: RawImageData::U8(rgb.into_raw()),
+            width: w,
+            height: h,
+            data_format: RawImageFormat::RGB8,
+            tag: Vec::new(),
+        };
+
+        let mut doc = PdfDocument::new("t");
+        doc.add_image(&raw);
+        let mut warnings = Vec::new();
+        let bytes = doc.save(&lossless_save_options(), &mut warnings);
+        let text = String::from_utf8_lossy(&bytes);
+
+        // Native resolution preserved (not the ~706×942 the 2MB cap would produce).
+        assert!(
+            text.contains(&format!("/Width {w}")) && text.contains(&format!("/Height {h}")),
+            "expected native {w}x{h} image in PDF"
+        );
+        // Lossless Flate, never lossy DCT/JPEG.
+        assert!(text.contains("/FlateDecode"), "expected FlateDecode");
+        assert!(!text.contains("/DCTDecode"), "must not be lossy DCT");
     }
 
     #[test]

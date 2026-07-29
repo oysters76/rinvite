@@ -11,6 +11,10 @@ pub struct Event {
     pub bride_family_name: String,
     pub groom_name: String,
     pub groom_family_name: String,
+    /// RSVP contact number for the bride's side, e.g. "+94 71 195 4412".
+    pub bride_phone: String,
+    /// RSVP contact number for the groom's side.
+    pub groom_phone: String,
     pub event_date: NaiveDate,
     pub start_time: NaiveTime,
     pub end_time: NaiveTime,
@@ -32,6 +36,8 @@ pub struct NewEvent {
     pub bride_family_name: String,
     pub groom_name: String,
     pub groom_family_name: String,
+    pub bride_phone: String,
+    pub groom_phone: String,
     pub event_date: NaiveDate,
     pub start_time: NaiveTime,
     pub end_time: NaiveTime,
@@ -48,6 +54,8 @@ pub struct EventUpdate {
     pub bride_family_name: Option<String>,
     pub groom_name: Option<String>,
     pub groom_family_name: Option<String>,
+    pub bride_phone: Option<String>,
+    pub groom_phone: Option<String>,
     pub event_date: Option<NaiveDate>,
     pub start_time: Option<NaiveTime>,
     pub end_time: Option<NaiveTime>,
@@ -69,6 +77,8 @@ impl Event {
             bride_family_name: details.bride_family_name,
             groom_name: details.groom_name,
             groom_family_name: details.groom_family_name,
+            bride_phone: details.bride_phone,
+            groom_phone: details.groom_phone,
             event_date: details.event_date,
             start_time: details.start_time,
             end_time: details.end_time,
@@ -93,6 +103,12 @@ impl Event {
         }
         if let Some(v) = u.groom_family_name {
             self.groom_family_name = v;
+        }
+        if let Some(v) = u.bride_phone {
+            self.bride_phone = v;
+        }
+        if let Some(v) = u.groom_phone {
+            self.groom_phone = v;
         }
         if let Some(v) = u.event_date {
             self.event_date = v;
@@ -124,6 +140,8 @@ impl Event {
             bride_family_name: self.bride_family_name.clone(),
             groom_name: self.groom_name.clone(),
             groom_family_name: self.groom_family_name.clone(),
+            bride_phone: self.bride_phone.clone(),
+            groom_phone: self.groom_phone.clone(),
             event_date: self.event_date,
             start_time: self.start_time,
             end_time: self.end_time,
