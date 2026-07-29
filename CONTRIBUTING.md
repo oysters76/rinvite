@@ -1,20 +1,20 @@
 # Contributing to rinvite
 
-Thanks for your interest in improving rinvite! This guide covers the dev setup,
-the architectural rules that keep the codebase clean, and the concrete recipe
-for adding a feature. It's aimed at developers comfortable with Rust.
+Thank you for your interest in rinvite. This guide covers the development setup,
+the architecture rules that keep the codebase clean, and the steps to add a
+feature. It is for developers who know Rust.
 
 ---
 
 ## 1. Prerequisites
 
-- **Rust** with edition‑2024 support (**1.85+**; CI uses stable). Install via [rustup](https://rustup.rs).
+- **Rust** with edition-2024 support (**1.85 or later**; CI uses stable). Install it with [rustup](https://rustup.rs).
   - Components: `rustfmt` and `clippy` (`rustup component add rustfmt clippy`).
-- **Docker** (optional) — for the Postgres path and to reproduce CI's image build.
-- **Postgres** (optional) — only if you want to exercise the SQL adapters; the
-  default in‑memory store needs nothing.
+- **Docker** (optional) — for the Postgres path and to reproduce the CI image build.
+- **Postgres** (optional) — only if you want to test the SQL adapters. The
+  default in-memory store needs nothing.
 
-No live database is required to build, run, or test.
+You do not need a live database to build, run, or test.
 
 ---
 
@@ -29,7 +29,7 @@ cargo run                                    # in-memory store on :3000
 cargo test                                   # everything, no DB needed
 ```
 
-Run against Postgres locally:
+Run against Postgres on your machine:
 
 ```bash
 docker run -d --name rinvite-pg -p 5432:5432 \
@@ -43,72 +43,74 @@ cargo run    # migrations run automatically on boot
 
 ## 3. The one rule: dependencies point inward
 
-rinvite is **hexagonal (ports & adapters)**. Before writing code, internalize
-the dependency rule — it's what keeps the core testable and swappable:
+rinvite is **hexagonal (ports and adapters)**. Before you write code, learn the
+dependency rule. It keeps the core testable and replaceable:
 
 ```
 domain  ─◄─  application  ─◄─  adapter / main
 (pure)       (use cases)       (axum, sqlx, argon2, printpdf, …)
 ```
 
-- **`domain/`** — entities (`Event`, `Guest`, `User`), value objects, `DomainError`,
-  validation, and the **port traits**. It must not import `axum`, `sqlx`,
-  `printpdf`, etc. If you're tempted to, you're in the wrong layer.
-- **`application/`** — use‑case logic (`*ServiceImpl`) written **only against port
-  traits**. No framework or DB types here either.
+- **`domain/`** — the entities (`Event`, `Guest`, `User`), the value objects, `DomainError`,
+  the validation, and the **port traits**. It must not import `axum`, `sqlx`,
+  `printpdf`, or similar crates. If you want to, you are in the wrong layer.
+- **`application/`** — the use-case logic (`*ServiceImpl`), written **only against the port
+  traits**. Do not use framework or DB types here.
 - **`adapter/`** — the outside world:
-  - `inbound/http/` — axum routes, request/response **DTOs**, the `AuthUser`
+  - `inbound/http/` — the axum routes, the request and response **DTOs**, the `AuthUser`
     extractor, and the single `DomainError → HTTP status` mapping.
-  - `outbound/` — concrete implementations of the outbound ports (argon2, JWT,
-    clock, PDF, sender, and the in‑memory/Postgres repositories).
-- **`main.rs`** — the composition root; the only place that knows every concrete type.
+  - `outbound/` — the concrete implementations of the outbound ports (argon2, JWT,
+    clock, PDF, sender, and the in-memory and Postgres repositories).
+- **`main.rs`** — the composition root. It is the only place that knows every concrete type.
 
-**Ports live in `domain/port/`:** `inbound.rs` = what the app offers to the
-outside (driving), `outbound.rs` = what the app needs from the outside (driven).
+**The ports are in `domain/port/`.** `inbound.rs` is what the app offers to the
+outside (driving). `outbound.rs` is what the app needs from the outside (driven).
 
 ---
 
-## 4. Recipe: adding a feature the hexagonal way
+## 4. Steps: add a feature the hexagonal way
 
-Say you want to add "duplicate an event." Work outside‑in through the layers:
+For example, you want to add "duplicate an event." Work from the inside outward
+through the layers:
 
-1. **Inbound port** (`domain/port/inbound.rs`) — add the use case to the relevant
-   trait, e.g. `EventService::duplicate_event(owner, id) -> Event`.
+1. **Inbound port** (`domain/port/inbound.rs`) — add the use case to the correct
+   trait, for example `EventService::duplicate_event(owner, id) -> Event`.
 2. **Outbound port** (`domain/port/outbound.rs`) — only if you need something new
-   from the outside (a new query, a mailer, …). Add a trait method.
+   from the outside (a new query, a mailer, and so on). Add a trait method.
 3. **Application** (`application/*_service.rs`) — implement the use case against
-   the traits. Reuse the existing ownership gates (`owned_event`, `guest_of`)
-   and the `validate_*` helpers. **No axum/sqlx here.**
-4. **Outbound adapter(s)** — implement any new outbound method in *both*
+   the traits. Reuse the ownership gates (`owned_event`, `guest_of`)
+   and the `validate_*` helpers. **Do not use axum or sqlx here.**
+4. **Outbound adapters** — implement each new outbound method in *both*
    `persistence/events_memory.rs` and `persistence/events_postgres.rs` (keep them
-   in sync), plus any other affected adapter.
-5. **Inbound adapter** (`inbound/http/…`) — add the DTO(s), the handler, and a
-   `.route(...)` line. Map any new `DomainError` variant to a status code in
+   in sync), and in any other adapter that the change affects.
+5. **Inbound adapter** (`inbound/http/…`) — add the DTOs, the handler, and a
+   `.route(...)` line. Map each new `DomainError` variant to a status code in
    `http/mod.rs`.
-6. **Wire it** in `main.rs` if new dependencies were introduced.
+6. **Wire it** in `main.rs` if the change introduces new dependencies.
 
-Steps 1–3 never mention axum or sqlx — that's the whole point.
+Steps 1 to 3 never mention axum or sqlx. That is the point.
 
 ### Errors
 
-Return a `DomainError` from the core; map it to HTTP in exactly one place
-(`ApiError`'s `IntoResponse` in `http/mod.rs`). Never leak internal detail on
-5xx. Owner‑scoped resources are reported as `NotFound` (not `Forbidden`) so we
-don't confirm the existence of other users' data.
+Return a `DomainError` from the core. Map it to HTTP in exactly one place
+(the `IntoResponse` for `ApiError` in `http/mod.rs`). Never disclose internal
+detail in a 5xx response. The server reports owner-scoped resources as
+`NotFound` (not `Forbidden`), so it does not confirm that other users' data
+exists.
 
 ### Database migrations
 
-Migrations are plain SQL in `migrations/`, applied on boot via
-`sqlx::migrate!`. Add a new file with the next sequential prefix
-(`000N_description.sql`); never edit an already‑released migration. The
-in‑memory adapter has no schema, so mirror any behavior a migration implies
-(e.g. cascading deletes) in the in‑memory code.
+The migrations are plain SQL in `migrations/`. `sqlx::migrate!` applies them at
+boot. Add a new file with the next sequential prefix (`000N_description.sql`).
+Never edit a migration that is already released. The in-memory adapter has no
+schema, so mirror in the in-memory code any behavior that a migration implies
+(for example, cascading deletes).
 
 ---
 
 ## 5. Coding standards
 
-Every change must pass what CI checks:
+Each change must pass what CI checks:
 
 ```bash
 cargo fmt --all --check                        # formatting
@@ -116,44 +118,44 @@ cargo clippy --all-targets -- -D warnings      # zero warnings
 cargo test --all                               # tests green
 ```
 
-- Match the surrounding style (comment density, naming, idioms).
-- Prefer small, focused functions; keep HTTP handlers thin (parse → call port → shape output).
-- Keep the in‑memory and Postgres repositories behaviorally identical.
+- Match the style around your change (comment density, naming, and idioms).
+- Prefer small, focused functions. Keep the HTTP handlers thin (parse → call the port → shape the output).
+- Keep the in-memory and Postgres repositories identical in behavior.
 
 ---
 
 ## 6. Testing
 
-- **Unit/integration tests** live next to the code in `#[cfg(test)]` modules.
-  The in‑memory adapters (`InMemoryEventStore`, `InMemoryUserRepository`) plus
-  small fakes (see `application/event_service.rs` tests) let you exercise full
-  use cases with no web server or database.
-- **Manual PDF checks**: render an invite, then rasterize it to inspect visually,
-  e.g. `qlmanage -t -s 1600 -o out invite.pdf` (macOS) or `pdftoppm` (poppler).
-- **Postgres path**: spin up the container from §2 and re‑run your flow to
-  confirm the SQL adapters and migrations behave.
+- **Unit and integration tests** are next to the code in `#[cfg(test)]` modules.
+  The in-memory adapters (`InMemoryEventStore`, `InMemoryUserRepository`) and
+  small fakes (see the `application/event_service.rs` tests) let you test full
+  use cases with no web server and no database.
+- **Manual PDF checks**: render an invitation, then rasterize it to inspect it,
+  for example `qlmanage -t -s 1600 -o out invite.pdf` (macOS) or `pdftoppm` (poppler).
+- **Postgres path**: start the container from §2 and run your flow again, to
+  confirm that the SQL adapters and the migrations behave correctly.
 
 ---
 
-## 7. Commits & pull requests
+## 7. Commits and pull requests
 
-- Branch off `master`; keep PRs focused and reasonably small.
-- Write clear commit messages (imperative mood: "add event duplication").
-- In the PR description, explain the **why**, note any new env vars or
-  migrations, and confirm `fmt` / `clippy` / `test` pass.
-- Update docs when behavior changes: the API table in `README.md`, the env‑var
-  table, and the Postman collection (`postman/rinvite.postman_collection.json`).
+- Branch off `master`. Keep each PR focused and reasonably small.
+- Write clear commit messages in the imperative mood ("add event duplication").
+- In the PR description, explain the **reason**, note each new env var or
+  migration, and confirm that `fmt`, `clippy`, and `test` pass.
+- Update the docs when behavior changes: the API table in `README.md`, the
+  env-var table, and the Postman collection (`postman/rinvite.postman_collection.json`).
 
 ---
 
 ## 8. CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR:
+GitHub Actions (`.github/workflows/ci.yml`) runs on each push and PR:
 
 1. `cargo fmt --all --check`
 2. `cargo clippy --all-targets -- -D warnings`
 3. `cargo test --all`
-4. `docker build` (validates the image still builds)
+4. `docker build` (confirms that the image still builds)
 
 Green CI is required to merge.
 
@@ -173,4 +175,4 @@ Green CI is required to merge.
 | Persistence (SQL / in‑memory) | `adapter/outbound/persistence/` |
 | Wiring everything together | `main.rs` |
 
-Happy hacking! 💐
+Thank you for your contribution.

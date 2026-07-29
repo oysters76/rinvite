@@ -1,12 +1,12 @@
 <div align="center">
 
-# 💐 rinvite
+# rinvite
 
-**A self-hostable wedding invitation & RSVP service — built in Rust with clean hexagonal architecture.**
+**A self-hostable wedding invitation and RSVP service. It is built in Rust with a clean hexagonal architecture.**
 
-Create an event, build a guest list, and invite everyone two ways:
-a **printable PDF** rendered onto your own card design, or a beautiful
-**animated e-invite web page** that collects RSVPs for you.
+Create an event, build a guest list, and invite each person in two ways:
+a **printable PDF** on your own card design, or an **animated e-invite web
+page** that collects the RSVPs for you.
 
 ![Rust](https://img.shields.io/badge/Rust-edition_2024-000000?logo=rust)
 ![Architecture](https://img.shields.io/badge/architecture-hexagonal-8a7a63)
@@ -18,23 +18,23 @@ a **printable PDF** rendered onto your own card design, or a beautiful
 
 ---
 
-## ✨ Features
+## Features
 
-- 🔐 **Secure auth** — signup/login with argon2id hashing, JWT sessions, timing‑safe login (no account enumeration), and a fail‑fast required signing secret.
-- ✉️ **Email verification** — signup emails a verification link; login is refused until the address is confirmed (with a one‑click resend).
-- 🎟️ **Subscription plans** — Free / Pro / Max tiers with per‑plan usage limits; hitting one opens an in‑app dialog to contact the owner and request an upgrade.
-- 💒 **Events & guests** — full CRUD for wedding events and their guest lists, scoped so a user only ever sees their own data.
-- 🖨️ **PDF invitations** — overlay personalized text onto *your* card image with configurable fonts, positions, and colors. Sized to A5 out of the box.
-- 🌸 **Animated e‑invites** — a gorgeous, self‑contained HTML invitation (opening gates, falling petals, gold styling) served per‑guest, with a built‑in RSVP form.
-- ✅ **RSVP collection** — guests respond via their unique link; party size is validated against a per‑guest cap and the RSVP deadline.
-- 📦 **Bulk actions** — merge every printed invite into one PDF to download, or sequentially send every e‑invite and get a per‑guest delivery report.
-- 🖥️ **Organizer dashboard** — an optional web UI (SvelteKit + shadcn‑svelte) in [`web/`](web/) to manage events, guests, RSVP status, CSV import, and bulk send/print — talking to the same API.
-- 🧩 **Hexagonal architecture** — the domain has zero framework/database dependencies; swap Postgres for in‑memory (or a real WhatsApp sender for the no‑op one) without touching the core.
-- 🐘 **Runs anywhere** — in‑memory for zero‑setup local dev, or Postgres for production. Ships with a Dockerfile, docker‑compose, and CI.
+- **Secure auth** — signup and login with argon2id hashing and JWT sessions. The login is timing-safe, so it does not disclose which accounts exist. The server needs a signing secret and stops if the secret is absent.
+- **Email verification** — signup sends a verification link by email. The server refuses login until the user confirms the address. The user can request the link again with one click.
+- **Subscription plans** — Free, Pro, and Max tiers, each with its own usage limits. When a user reaches a limit, the app opens a dialog to contact the owner and to request an upgrade.
+- **Events and guests** — full create, read, update, and delete for wedding events and their guest lists. Each user sees only their own data.
+- **PDF invitations** — put personalized text onto *your* card image with configurable fonts, positions, and colors. The default page size is A5.
+- **Animated e-invites** — a self-contained HTML invitation with a built-in RSVP form. The server sends one page for each guest. The page shows opening gates, falling petals, and gold styling.
+- **RSVP collection** — each guest replies through a unique link. The server checks the party size against a per-guest limit and against the RSVP deadline.
+- **Bulk actions** — merge all printed invitations into one PDF to download, or send all e-invites in sequence and get a delivery report for each guest.
+- **Organizer dashboard** — an optional web UI (SvelteKit and shadcn-svelte) in [`web/`](web/). It manages events, guests, RSVP status, CSV import, and bulk send and print. It uses the same API.
+- **Hexagonal architecture** — the domain has no framework or database dependencies. You can replace Postgres with the in-memory store, or the no-op WhatsApp sender with a real one, without a change to the core.
+- **Runs anywhere** — use the in-memory store for local development with no setup, or Postgres for production. The repo includes a Dockerfile, a docker-compose file, and CI.
 
 ---
 
-## 🧰 Tech stack
+## Tech stack
 
 | Concern | Choice |
 |---|---|
@@ -46,13 +46,13 @@ a **printable PDF** rendered onto your own card design, or a beautiful
 | PDF | [printpdf](https://crates.io/crates/printpdf) + [ttf-parser](https://crates.io/crates/ttf-parser) |
 | Frontend *(optional)* | [SvelteKit](https://svelte.dev/) + [shadcn-svelte](https://shadcn-svelte.com) + Tailwind, in [`web/`](web/) |
 
-No ORM, no macro magic — just ports, adapters, and plain SQL.
+There is no ORM and no macro magic. The code uses only ports, adapters, and plain SQL.
 
 ---
 
-## 🚀 Quick start (zero setup)
+## Quick start (no setup)
 
-You need a recent Rust toolchain (edition 2024, i.e. **Rust 1.85+**). No database required — it falls back to an in‑memory store.
+You need a recent Rust toolchain (edition 2024, that is **Rust 1.85 or later**). You do not need a database. The server uses an in-memory store if you do not set one.
 
 ```bash
 git clone <your-fork-url> rinvite && cd rinvite
@@ -64,7 +64,7 @@ cargo run
 # → Listening on http://0.0.0.0:3000
 ```
 
-Then walk the whole flow with `curl`:
+Then do the full sequence with `curl`:
 
 ```bash
 BASE=http://localhost:3000
@@ -102,18 +102,18 @@ curl -s -X POST $BASE/events/$EVENT/guests -H "authorization: Bearer $TOKEN" \
 curl -s "$BASE/events/$EVENT/invites/print.pdf" -H "authorization: Bearer $TOKEN" -o invites.pdf
 ```
 
-> 💡 Prefer Postman? Import [`postman/rinvite.postman_collection.json`](postman/rinvite.postman_collection.json) — every endpoint is there and the requests chain automatically.
+> Do you prefer Postman? Import [`postman/rinvite.postman_collection.json`](postman/rinvite.postman_collection.json). It contains every endpoint, and the requests chain automatically.
 
 ---
 
-## 🖥️ Web dashboard (optional UI)
+## Web dashboard (optional UI)
 
-Rather click than curl? A **SvelteKit + shadcn‑svelte** organizer dashboard lives
-in [`web/`](web/) — a static single‑page app that talks to this API. It covers
-the whole workflow: create/edit/delete events, manage the guest list (single add,
-quick‑add, **CSV import**), search / filter / sort, per‑guest and **bulk send /
-download PDF**, move guests between channels, and a live RSVP summary — in a
-clean, minimalist UI.
+If you prefer to click instead of to use `curl`, use the **SvelteKit and
+shadcn-svelte** organizer dashboard in [`web/`](web/). It is a static
+single-page app that uses this API. It covers the full workflow: create, edit,
+and delete events; manage the guest list (single add, quick-add, and **CSV
+import**); search, filter, and sort; per-guest and **bulk send and download
+PDF**; move guests between channels; and a live RSVP summary.
 
 ```bash
 # 1) run the API (see Quick start above)
@@ -126,20 +126,21 @@ npm install
 npm run dev                     # → http://localhost:5173
 ```
 
-Open **http://localhost:5173**, create an account, and go. The dashboard reads
-the API base URL from `VITE_API_BASE_URL` (defaults to `http://localhost:3000`).
-Build a static bundle with `npm run build` and deploy it to any static host,
-then set `VITE_API_BASE_URL` to your API and the backend's `CORS_ALLOWED_ORIGINS`
-to the dashboard's origin. See [`web/README.md`](web/README.md) for details.
+Open **http://localhost:5173**, create an account, and start. The dashboard
+reads the API base URL from `VITE_API_BASE_URL` (the default is
+`http://localhost:3000`). Build a static bundle with `npm run build` and deploy
+it to any static host. Then set `VITE_API_BASE_URL` to your API, and set the
+backend's `CORS_ALLOWED_ORIGINS` to the dashboard's origin. See
+[`web/README.md`](web/README.md) for the details.
 
-> CORS just works in dev — the API allows any origin unless you set
-> `CORS_ALLOWED_ORIGINS`.
+> CORS works in development with no setup. The API allows any origin until you
+> set `CORS_ALLOWED_ORIGINS`.
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
-All configuration is via environment variables:
+You set all configuration with environment variables:
 
 | Variable | Required | Default | Purpose |
 |---|:---:|---|---|
@@ -147,7 +148,7 @@ All configuration is via environment variables:
 | `DATABASE_URL` | | *(in‑memory)* | Postgres DSN, e.g. `postgres://user:pass@host:5432/db`. Unset → in‑memory store. |
 | `PUBLIC_BASE_URL` | | `http://localhost:3000` | Base URL used to build shareable invite links. |
 | `CORS_ALLOWED_ORIGINS` | | *(any origin)* | Comma‑separated allowlist for a browser frontend. Unset allows any origin (safe — auth is Bearer‑token, no cookies). |
-| `PDF_CONFIG` | | *(plain page)* | Path to the PDF layout JSON (see [Customizing the PDF](#-customizing-the-pdf)). Unset → a plain text‑only fallback. |
+| `PDF_CONFIG` | | *(plain page)* | Path to the PDF layout JSON (see [Customizing the PDF](#customizing-the-pdf)). Unset → a plain text‑only fallback. |
 | `EINVITE_TEMPLATE` | | *(embedded)* | Path to a custom e‑invite HTML template. Unset → the built‑in [`assets/einvite/template.html`](assets/einvite/template.html). |
 | `RESEND_API_KEY` | | *(log‑only)* | [Resend](https://resend.com) API key. With `EMAIL_FROM`, e‑invite emails are actually sent; unset → logged to the console. |
 | `EMAIL_FROM` | | — | Sender for emails, e.g. `Rinvite <invites@your-domain>`. |
@@ -160,13 +161,15 @@ All configuration is via environment variables:
 
 The server listens on **port 3000**.
 
-### Plans, verification & upgrade requests
+### Plans, verification, and upgrade requests
 
-New accounts start unverified: signup emails a verification link
-(`{PUBLIC_BASE_URL}/verify?token=…`) and **login is refused until the email is
-confirmed**. Users can resend the link from the signup/login screens.
+A new account starts unverified. Signup sends a verification link
+(`{PUBLIC_BASE_URL}/verify?token=…`), and **the server refuses login until the
+user confirms the email**. The user can request the link again from the signup
+or login screen.
 
-Each account has a plan enforced on create‑event and add‑guest:
+Each account has a plan. The server applies the plan on create-event and on
+add-guest:
 
 | Plan | Events | Guests per event |
 |---|---|---|
@@ -174,54 +177,56 @@ Each account has a plan enforced on create‑event and add‑guest:
 | Pro | 5 | 100 |
 | Max | unlimited | unlimited |
 
-Exceeding a limit returns **HTTP 402** and the dashboard opens a dialog with the
-`BUSINESS_CONTACT_EMAIL` and a **Request an upgrade** button, which emails
-`UPGRADE_NOTIFY_EMAIL` (rendered from the customizable
-[`upgrade-request.*`](assets/messages/) templates). There is no self‑serve
-billing — an operator changes the row's `plan` (`free`/`pro`/`max`) to upgrade.
-The verification and upgrade emails share the same log‑only fallback as the rest
-of the app, so everything works in local dev without a Resend account.
+If a user reaches a limit, the server returns **HTTP 402**. The dashboard then
+opens a dialog with the `BUSINESS_CONTACT_EMAIL` and a **Request an upgrade**
+button. The button sends an email to `UPGRADE_NOTIFY_EMAIL`, from the
+customizable [`upgrade-request.*`](assets/messages/) templates. There is no
+self-serve billing. An operator changes the `plan` value in the row
+(`free`, `pro`, or `max`) to upgrade the account. The verification and upgrade
+emails use the same log-only fallback as the rest of the app, so all functions
+work in local development without a Resend account.
 
-### E‑invite delivery (WhatsApp + email)
+### E-invite delivery (WhatsApp and email)
 
-When you send an e‑invite guest their link, Rinvite routes it automatically:
-**a guest with a phone gets WhatsApp**, otherwise **email**. The message is
-built from the editable templates in [`assets/messages/`](assets/messages/)
-(`email.html`, `email.txt`, `email-subject.txt`, `whatsapp.txt`), each supporting
-placeholders `{guest_name} {couple} {bride_name} {groom_name} {date} {time}
-{venue} {hall} {rsvp_by} {invite_url}`. Links are short and pretty —
-`{PUBLIC_BASE_URL}/i/<token>`.
+When you send a guest their e-invite link, Rinvite selects the channel
+automatically. **A guest with a phone number gets WhatsApp**; a guest without
+one gets **email**. The server builds the message from the editable templates in
+[`assets/messages/`](assets/messages/) (`email.html`, `email.txt`,
+`email-subject.txt`, and `whatsapp.txt`). Each template accepts the placeholders
+`{guest_name} {couple} {bride_name} {groom_name} {date} {time} {venue} {hall}
+{rsvp_by} {invite_url}`. The links are short: `{PUBLIC_BASE_URL}/i/<token>`.
 
-**No provider keys?** No problem — delivery falls back to logging the message
-(with the link) to the server console, so the dashboard's **Send** works in local
-dev without any Resend/Twilio account.
+If you do not set provider keys, the server writes the message (with the link)
+to the server console instead. The dashboard's **Send** function continues to
+operate in local development without a Resend or Twilio account.
 
 ---
 
-## 🏠 Self-hosting
+## Self-hosting
 
-### Option A — Docker (single container, in‑memory)
+### Option A — Docker (single container, in-memory)
 
 ```bash
 docker build -t rinvite .
 docker run -p 3000:3000 -e JWT_SECRET=$(openssl rand -hex 32) rinvite
 ```
 
-### Option B — Docker Compose (app + Postgres, recommended)
+### Option B — Docker Compose (app and Postgres, recommended)
 
 ```bash
 cp .env.example .env      # then set JWT_SECRET (openssl rand -hex 32)
 docker compose up --build
 ```
 
-Compose brings up Postgres with a persistent volume and waits for it to be
-healthy before starting the app. Database migrations run automatically on boot.
+Compose starts Postgres with a persistent volume and waits until Postgres is
+healthy before it starts the app. The database migrations run automatically at
+boot.
 
-### Option C — DigitalOcean via Terraform (backend + frontend + DB + custom domain)
+### Option C — DigitalOcean with Terraform (backend, frontend, DB, and custom domain)
 
-Reproducible one‑command deploy of the whole stack (API, static web app, managed
+One command deploys the full stack (the API, the static web app, managed
 Postgres, DNS, and automatic TLS on your custom domain) to DigitalOcean App
-Platform:
+Platform. The deploy is reproducible:
 
 ```bash
 cd deploy/terraform
@@ -229,20 +234,20 @@ cp terraform.tfvars.example terraform.tfvars   # set do_token + root_domain
 terraform init && terraform apply
 ```
 
-See [deploy/terraform/README.md](deploy/terraform/README.md) for the full runbook
+See [deploy/terraform/README.md](deploy/terraform/README.md) for the full runbook.
 
 ### Production checklist
 
-- **Set a strong `JWT_SECRET`** (32+ random bytes) and keep it out of version control.
-- **Set `DATABASE_URL`** — otherwise the app silently uses the in‑memory store and loses all data on restart.
-- **Set `PUBLIC_BASE_URL`** to your real public URL so invite links point to the right place.
-- **Set `CORS_ALLOWED_ORIGINS`** to your frontend's origin(s) if you run a separate SPA.
-- Put it behind a TLS‑terminating reverse proxy (nginx, Caddy, Traefik).
-- Mount your own `assets/` (card image, fonts, templates) and point `PDF_CONFIG` / `EINVITE_TEMPLATE` at them to fully brand the invitations without rebuilding.
+- **Set a strong `JWT_SECRET`** (32 or more random bytes) and keep it out of version control.
+- **Set `DATABASE_URL`**. If you do not, the app uses the in-memory store and loses all data at restart.
+- **Set `PUBLIC_BASE_URL`** to your real public URL, so the invite links point to the correct place.
+- **Set `CORS_ALLOWED_ORIGINS`** to your frontend's origin or origins if you run a separate SPA.
+- Put the app behind a TLS-terminating reverse proxy (nginx, Caddy, or Traefik).
+- Mount your own `assets/` (card image, fonts, and templates) and point `PDF_CONFIG` and `EINVITE_TEMPLATE` at them. This gives the invitations your own brand without a rebuild.
 
 ---
 
-## 📡 API reference
+## API reference
 
 **Public**
 
@@ -271,13 +276,13 @@ See [deploy/terraform/README.md](deploy/terraform/README.md) for the full runboo
 | `GET` | `/events/{id}/invites/print.pdf` | **Bulk:** merged PDF of all print‑channel guests |
 | `POST` | `/events/{id}/invites/send` | **Bulk:** sequentially send all e‑invites → report |
 
-Errors are consistent JSON: `{ "error": "message" }` with a meaningful status code (`400/401/404/409/422/500`).
+The errors are consistent JSON: `{ "error": "message" }` with a correct status code (`400/401/404/409/422/500`).
 
 ---
 
-## 🎨 Customizing the PDF
+## Customizing the PDF
 
-The PDF renderer overlays text onto a **base card image** using a JSON layout
+The PDF renderer puts text onto a **base card image** with a JSON layout that
 you control ([`assets/pdf-config.json`](assets/pdf-config.json)):
 
 ```jsonc
@@ -299,24 +304,27 @@ you control ([`assets/pdf-config.json`](assets/pdf-config.json)):
 }
 ```
 
-Placeholders like `{bride_name}`, `{guest_name}`, `{day_ordinal}`, `{month}`,
-`{start_time}`, `{rsvp_by}`, `{venue_name}` are filled per guest. Point
-`PDF_CONFIG` at your file and swap in your own image/fonts — no recompile needed.
+The server fills placeholders such as `{bride_name}`, `{guest_name}`,
+`{day_ordinal}`, `{month}`, `{start_time}`, `{rsvp_by}`, and `{venue_name}` for
+each guest. Point `PDF_CONFIG` at your file and use your own image and fonts. A
+recompile is not necessary.
 
-## 🌸 Customizing the e-invite
+## Customizing the e-invite
 
-The animated invitation lives in [`assets/einvite/template.html`](assets/einvite/template.html).
-The server injects each guest's data as JSON and the page renders itself. Edit
-the file (or set `EINVITE_TEMPLATE` to a copy) to restyle — guest/event values
-are injected safely (XSS‑escaped), so your markup stays declarative.
+The animated invitation is in
+[`assets/einvite/template.html`](assets/einvite/template.html). The server puts
+each guest's data into the page as JSON, and the page renders itself. Edit the
+file (or set `EINVITE_TEMPLATE` to a copy) to change the style. The server
+escapes the guest and event values against XSS, so your markup stays
+declarative.
 
 ---
 
-## 🧭 Architecture
+## Architecture
 
-rinvite follows **hexagonal (ports & adapters)** architecture. The dependency
+rinvite uses a **hexagonal (ports and adapters)** architecture. The dependency
 rule points inward: `domain` depends on nothing, `application` depends only on
-`domain`, and `adapter` / `main` depend on both.
+`domain`, and `adapter` and `main` depend on both.
 
 ```
 src/
@@ -334,12 +342,13 @@ src/
 └── main.rs                     # composition root — wires adapters to ports
 ```
 
-The payoff: the entire core is testable without a web server or a database, and
-swapping an implementation (e.g. a real e‑invite sender) never touches business logic.
+The result: you can test the full core without a web server or a database, and a
+change of implementation (for example, a real e-invite sender) does not touch
+the business logic.
 
 ---
 
-## ✅ Testing
+## Testing
 
 ```bash
 cargo test           # unit + integration tests (in-memory adapters, no DB needed)
@@ -349,24 +358,24 @@ cargo fmt --all --check
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
-Planned enhancements (contributions welcome!):
+These are the planned enhancements. Contributions are welcome.
 
-- WhatsApp opt‑out (STOP) handling, per‑guest `sent_at` tracking, and a retry queue for very large batches
-- JSON variant of `GET /i/{token}` for frontends that render their own invite
-- RSVP summary/aggregates, pagination, and a `/health` endpoint
+- WhatsApp opt-out (STOP) handling, a per-guest `sent_at` value, and a retry queue for very large batches
+- A JSON form of `GET /i/{token}` for frontends that render their own invite
+- RSVP summary and aggregates, pagination, and a `/health` endpoint
 - Rate limiting on auth, structured logging, and an OpenAPI spec
 - JWT refresh tokens
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are very welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
-dev setup, the architecture rules to follow, and how to add a feature the
-hexagonal way.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+development setup, the architecture rules to follow, and the steps to add a
+feature the hexagonal way.
 
-## 📄 License
+## License
 
-Released under the **MIT License** — see [LICENSE](LICENSE).
+Released under the **MIT License**. See [LICENSE](LICENSE).
