@@ -19,6 +19,9 @@ export interface AppConfig {
 	contact_email: string;
 }
 
+/** Whose side is listed first everywhere the couple appears on the invite. */
+export type Precedence = 'bride' | 'groom';
+
 export interface Event {
 	id: string;
 	bride_name: string;
@@ -29,6 +32,8 @@ export interface Event {
 	bride_phone: string;
 	/** RSVP contact number for the groom's side. */
 	groom_phone: string;
+	/** Which side is listed first on the invite. Defaults to 'bride'. */
+	precedence: Precedence;
 	/** ISO date, YYYY-MM-DD */
 	event_date: string;
 	/** HH:MM:SS */

@@ -475,6 +475,7 @@ mod tests {
             groom_family_name: "D".into(),
             bride_phone: "+94 71 195 4412".into(),
             groom_phone: "+94 77 267 5783".into(),
+            precedence: crate::domain::event::Precedence::Bride,
             event_date: NaiveDate::from_ymd_opt(2026, 12, 31).unwrap(),
             start_time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
             end_time: NaiveTime::from_hms_opt(15, 0, 0).unwrap(),

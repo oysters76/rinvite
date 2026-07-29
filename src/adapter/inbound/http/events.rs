@@ -12,7 +12,7 @@ use uuid::Uuid;
 use super::auth_extractor::AuthUser;
 use super::{ApiError, AppState};
 use crate::domain::error::DomainError;
-use crate::domain::event::{Event, EventUpdate, NewEvent};
+use crate::domain::event::{Event, EventUpdate, NewEvent, Precedence};
 use crate::domain::guest::{Guest, GuestUpdate, InviteChannel, NewGuest};
 use crate::domain::port::inbound::BatchSendReport;
 
@@ -45,6 +45,9 @@ struct CreateEventRequest {
     groom_family_name: String,
     bride_phone: String,
     groom_phone: String,
+    /// "bride" (default) or "groom" — whose side is listed first.
+    #[serde(default)]
+    precedence: Option<String>,
     event_date: NaiveDate,
     start_time: NaiveTime,
     end_time: NaiveTime,
@@ -64,6 +67,11 @@ impl From<CreateEventRequest> for NewEvent {
             groom_family_name: r.groom_family_name,
             bride_phone: r.bride_phone,
             groom_phone: r.groom_phone,
+            precedence: r
+                .precedence
+                .as_deref()
+                .map(Precedence::parse)
+                .unwrap_or_default(),
             event_date: r.event_date,
             start_time: r.start_time,
             end_time: r.end_time,
@@ -84,6 +92,7 @@ struct EventResponse {
     groom_family_name: String,
     bride_phone: String,
     groom_phone: String,
+    precedence: String,
     event_date: NaiveDate,
     start_time: NaiveTime,
     end_time: NaiveTime,
@@ -104,6 +113,7 @@ impl From<Event> for EventResponse {
             groom_family_name: e.groom_family_name,
             bride_phone: e.bride_phone,
             groom_phone: e.groom_phone,
+            precedence: e.precedence.as_str().to_owned(),
             event_date: e.event_date,
             start_time: e.start_time,
             end_time: e.end_time,
@@ -205,6 +215,8 @@ struct UpdateEventRequest {
     groom_family_name: Option<String>,
     bride_phone: Option<String>,
     groom_phone: Option<String>,
+    #[serde(default)]
+    precedence: Option<String>,
     event_date: Option<NaiveDate>,
     start_time: Option<NaiveTime>,
     end_time: Option<NaiveTime>,
@@ -224,6 +236,7 @@ impl From<UpdateEventRequest> for EventUpdate {
             groom_family_name: r.groom_family_name,
             bride_phone: r.bride_phone,
             groom_phone: r.groom_phone,
+            precedence: r.precedence.as_deref().map(Precedence::parse),
             event_date: r.event_date,
             start_time: r.start_time,
             end_time: r.end_time,

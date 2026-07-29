@@ -33,8 +33,10 @@ pub fn load_template() -> Result<Arc<str>, DomainError> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct InvitePageData {
-    bride_name: String,
-    groom_name: String,
+    /// Leading side's personal name (bride unless groom takes precedence).
+    first_name: String,
+    /// Trailing side's personal name.
+    second_name: String,
     monogram: String,
     families: String,
     greeting: String,
@@ -63,14 +65,13 @@ struct RsvpData {
 /// Render the e-invite page by injecting this guest's data into the template.
 pub fn render_invite_page(template: &str, view: &InviteView, token: &str) -> String {
     let e = &view.event;
+    let (first_name, second_name) = e.ordered_names();
+    let (first_family, second_family) = e.ordered_family_names();
     let data = InvitePageData {
-        bride_name: e.bride_name.clone(),
-        groom_name: e.groom_name.clone(),
-        monogram: format!("{}&{}", initial(&e.bride_name), initial(&e.groom_name)),
-        families: format!(
-            "Together with the {} & {} families",
-            e.bride_family_name, e.groom_family_name
-        ),
+        first_name: first_name.to_owned(),
+        second_name: second_name.to_owned(),
+        monogram: format!("{}&{}", initial(first_name), initial(second_name)),
+        families: format!("Together with the {first_family} & {second_family} families"),
         greeting: format!("Dear {},", view.guest_name),
         date_big: format!(
             "{} of {}",
@@ -95,8 +96,8 @@ pub fn render_invite_page(template: &str, view: &InviteView, token: &str) -> Str
         ),
         footer: format!(
             "{} & {} · {}",
-            e.bride_name,
-            e.groom_name,
+            first_name,
+            second_name,
             e.event_date.format("%B %Y")
         ),
         rsvp: RsvpData {

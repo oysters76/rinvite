@@ -4,7 +4,7 @@ use sqlx::{PgPool, Row, postgres::PgRow};
 use uuid::Uuid;
 
 use crate::domain::error::DomainError;
-use crate::domain::event::Event;
+use crate::domain::event::{Event, Precedence};
 use crate::domain::guest::{Guest, InviteChannel, RsvpStatus};
 use crate::domain::port::outbound::{EventRepository, GuestRepository};
 
@@ -35,6 +35,7 @@ fn row_to_event(row: &PgRow) -> Result<Event, DomainError> {
         groom_family_name: row.try_get("groom_family_name").map_err(repo_err)?,
         bride_phone: row.try_get("bride_phone").map_err(repo_err)?,
         groom_phone: row.try_get("groom_phone").map_err(repo_err)?,
+        precedence: Precedence::parse(&row.try_get::<String, _>("precedence").map_err(repo_err)?),
         event_date: row
             .try_get::<NaiveDate, _>("event_date")
             .map_err(repo_err)?,
@@ -84,9 +85,9 @@ impl EventRepository for PostgresEventStore {
     async fn save(&self, e: &Event) -> Result<(), DomainError> {
         sqlx::query(
             "INSERT INTO events (id, owner_id, bride_name, bride_family_name, groom_name, \
-             groom_family_name, bride_phone, groom_phone, event_date, start_time, end_time, \
-             hall_name, venue_name, rsvp_by, poruwa_ceremony_time, created_at) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
+             groom_family_name, bride_phone, groom_phone, precedence, event_date, start_time, \
+             end_time, hall_name, venue_name, rsvp_by, poruwa_ceremony_time, created_at) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)",
         )
         .bind(e.id)
         .bind(e.owner_id)
@@ -96,6 +97,7 @@ impl EventRepository for PostgresEventStore {
         .bind(&e.groom_family_name)
         .bind(&e.bride_phone)
         .bind(&e.groom_phone)
+        .bind(e.precedence.as_str())
         .bind(e.event_date)
         .bind(e.start_time)
         .bind(e.end_time)
@@ -131,9 +133,9 @@ impl EventRepository for PostgresEventStore {
     async fn update(&self, e: &Event) -> Result<(), DomainError> {
         sqlx::query(
             "UPDATE events SET bride_name=$2, bride_family_name=$3, groom_name=$4, \
-             groom_family_name=$5, bride_phone=$6, groom_phone=$7, event_date=$8, \
-             start_time=$9, end_time=$10, hall_name=$11, venue_name=$12, rsvp_by=$13, \
-             poruwa_ceremony_time=$14 WHERE id=$1",
+             groom_family_name=$5, bride_phone=$6, groom_phone=$7, precedence=$8, event_date=$9, \
+             start_time=$10, end_time=$11, hall_name=$12, venue_name=$13, rsvp_by=$14, \
+             poruwa_ceremony_time=$15 WHERE id=$1",
         )
         .bind(e.id)
         .bind(&e.bride_name)
@@ -142,6 +144,7 @@ impl EventRepository for PostgresEventStore {
         .bind(&e.groom_family_name)
         .bind(&e.bride_phone)
         .bind(&e.groom_phone)
+        .bind(e.precedence.as_str())
         .bind(e.event_date)
         .bind(e.start_time)
         .bind(e.end_time)

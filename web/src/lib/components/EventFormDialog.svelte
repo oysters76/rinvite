@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { ApiError, events as eventsApi } from '$lib/api';
-	import type { CreateEvent, Event } from '$lib/api';
+	import type { CreateEvent, Event, Precedence } from '$lib/api';
 	import * as Dialog from '$lib/components/ui/dialog';
+	import * as Select from '$lib/components/ui/select';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -28,6 +29,7 @@
 		groom_family_name: '',
 		bride_phone: '',
 		groom_phone: '',
+		precedence: 'bride',
 		event_date: '',
 		start_time: '10:00',
 		end_time: '15:00',
@@ -39,6 +41,11 @@
 
 	let form = $state<CreateEvent>({ ...blank });
 	let saving = $state(false);
+
+	const precedenceLabels: Record<Precedence, string> = {
+		bride: "Bride's side first",
+		groom: "Groom's side first"
+	};
 
 	// Seed the form each time the dialog opens.
 	$effect(() => {
@@ -144,6 +151,16 @@
 						onbeforeinput={blockNonDigit}
 						oninput={(e) => (form.groom_phone = formatLkPhone(e.currentTarget.value))}
 					/>
+				</div>
+				<div class="grid gap-1.5 sm:col-span-2">
+					<Label for="prec">Listed first on the invite</Label>
+					<Select.Root type="single" bind:value={form.precedence}>
+						<Select.Trigger id="prec">{precedenceLabels[form.precedence]}</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="bride">{precedenceLabels.bride}</Select.Item>
+							<Select.Item value="groom">{precedenceLabels.groom}</Select.Item>
+						</Select.Content>
+					</Select.Root>
 				</div>
 				<div class="grid gap-1.5">
 					<Label for="ed">Event date</Label>
