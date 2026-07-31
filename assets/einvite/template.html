@@ -269,9 +269,9 @@
       <div class="reveal in" id="heroBlock">
         <p class="eyebrow" id="familiesEyebrow">Together with their families</p>
         <div class="names" style="margin:18px 0 6px">
-          <span class="script" id="bride">Hansika</span>
+          <span class="script" id="firstName">Hansika</span>
           <span class="amp">&amp;</span>
-          <span class="script" id="groom">Risira</span>
+          <span class="script" id="secondName">Risira</span>
         </div>
         <div class="rule"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M12 21s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.4-7 10-7 10z"/></svg></div>
         <p class="greeting" id="greeting">Dear Cherished Guest,</p>
@@ -361,8 +361,8 @@ const DATA = (() => {
 
 const set = (id, val) => { const el = document.getElementById(id); if (el != null && val != null) el.textContent = val; };
 
-set('bride', DATA.brideName);
-set('groom', DATA.groomName);
+set('firstName', DATA.firstName);
+set('secondName', DATA.secondName);
 if (DATA.monogram) mono.innerHTML = DATA.monogram;
 set('familiesEyebrow', DATA.families);
 set('greeting', DATA.greeting);

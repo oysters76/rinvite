@@ -10,18 +10,18 @@
     "caps": "assets/fonts/Cinzel-Variable.ttf"
   },
   "elements": [
-    { "template": "Mr. & Mrs. {bride_family_name}", "font": "serif", "size": 18, "x_mm": 75.85, "y_mm": 180, "align": "center", "color": [0.494, 0.380, 0.122] },
+    { "template": "Mr. & Mrs. {first_family_name}", "font": "serif", "size": 18, "x_mm": 75.85, "y_mm": 180, "align": "center", "color": [0.494, 0.380, 0.122] },
     { "template": "Together with", "font": "script", "size": 16, "x_mm": 75.85, "y_mm": 171, "align": "center", "color": [0.494, 0.380, 0.122] },
-    { "template": "Mr. & Mrs. {groom_family_name}", "font": "serif", "size": 18, "x_mm": 75.85, "y_mm": 162, "align": "center", "color": [0.494, 0.380, 0.122] },
+    { "template": "Mr. & Mrs. {second_family_name}", "font": "serif", "size": 18, "x_mm": 75.85, "y_mm": 162, "align": "center", "color": [0.494, 0.380, 0.122] },
 
     
   { "template": "Request the honour of the presence of", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 150, "align": "center", "color": [0.494, 0.380, 0.122]},
   { "template": "{guest_name}", "font": "serif_italic", "size": 18, "x_mm": 75.85, "y_mm": 140, "align": "center", "color": [0.20, 0.16, 0.13] },
   { "template": "to celebrate the marriage of their beloved children", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 132, "align": "center", "color": [0.494, 0.380, 0.122] },
 
-    { "template": "{bride_name}", "font": "script", "size": 50, "x_mm": 75.85, "y_mm": 116, "align": "center", "color": [0.663, 0.486, 0.180] },
+    { "template": "{first_name}", "font": "script", "size": 50, "x_mm": 75.85, "y_mm": 116, "align": "center", "color": [0.663, 0.486, 0.180] },
     { "template": "&", "font": "script", "size": 34, "x_mm": 75.85, "y_mm": 104, "align": "center", "color": [0.663, 0.486, 0.180] },
-    { "template": "{groom_name}", "font": "script", "size": 50, "x_mm": 75.85, "y_mm": 89, "align": "center", "color": [0.663, 0.486, 0.180] },
+    { "template": "{second_name}", "font": "script", "size": 50, "x_mm": 75.85, "y_mm": 89, "align": "center", "color": [0.663, 0.486, 0.180] },
 
     { "template": "{month}", "font": "caps", "size": 13, "x_mm": 55, "y_mm": 78, "align": "right", "transform": "upper", "letter_spacing": 1.2, "color": [0.494, 0.380, 0.122] },
     { "template": "{day}", "font": "serif", "size": 40, "x_mm": 74.85, "y_mm": 74, "align": "center", "color": [0.494, 0.380, 0.122] },
@@ -35,11 +35,11 @@
     { "template": "{poruwa_ceremony}", "font": "serif_italic", "size": 10, "x_mm": 75.85, "y_mm": 35, "align": "center", "color": [0.494, 0.380, 0.122] },
 
     { "template": "Kindly RSVP by {rsvp_by}", "font": "serif_italic", "size": 12, "x_mm": 75.85, "y_mm": 26, "align": "center", "color": [0.494, 0.380, 0.122]},
-  { "template": "{bride_name}",     "font": "serif", "size": 10, "x_mm": 52.85, "y_mm": 16, "align": "left", "color":[0.494, 0.380, 0.122] },
+  { "template": "{first_name}",     "font": "serif", "size": 10, "x_mm": 52.85, "y_mm": 16, "align": "left", "color":[0.494, 0.380, 0.122] },
 { "template": ":",               "font": "serif", "size": 10, "x_mm": 69.00, "y_mm": 16, "align": "left", "color":[0.494, 0.380, 0.122] },
-{ "template": "{bride_phone}",    "font": "serif", "size": 10, "x_mm": 71.50, "y_mm": 16, "align": "left", "color":[0.494, 0.380, 0.122] },
-{ "template": "{groom_name}",     "font": "serif", "size": 10, "x_mm": 52.85, "y_mm": 12, "align": "left", "color":[0.494, 0.380, 0.122] },
+{ "template": "{first_phone}",    "font": "serif", "size": 10, "x_mm": 71.50, "y_mm": 16, "align": "left", "color":[0.494, 0.380, 0.122] },
+{ "template": "{second_name}",     "font": "serif", "size": 10, "x_mm": 52.85, "y_mm": 12, "align": "left", "color":[0.494, 0.380, 0.122] },
 { "template": ":",               "font": "serif", "size": 10, "x_mm": 69.00, "y_mm": 12, "align": "left", "color":[0.494, 0.380, 0.122] },
-{ "template": "{groom_phone}",    "font": "serif", "size": 10, "x_mm": 71.50, "y_mm": 12, "align": "left", "color":[0.494, 0.380, 0.122] }
+{ "template": "{second_phone}",    "font": "serif", "size": 10, "x_mm": 71.50, "y_mm": 12, "align": "left", "color":[0.494, 0.380, 0.122] }
   ]
 }

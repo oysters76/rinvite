@@ -101,7 +101,8 @@ pub(super) fn load(env_var: &str, default: &str) -> Result<String, DomainError> 
 }
 
 fn build_vars(e: &Event, g: &Guest, invite_url: &str) -> Vec<(&'static str, String)> {
-    let couple = format!("{} & {}", e.bride_name, e.groom_name);
+    let (first_name, second_name) = e.ordered_names();
+    let couple = format!("{first_name} & {second_name}");
     vec![
         ("guest_name", g.name.clone()),
         ("couple", couple),
@@ -179,6 +180,7 @@ mod tests {
                 groom_family_name: "N".into(),
                 bride_phone: "+94 71 195 4412".into(),
                 groom_phone: "+94 77 267 5783".into(),
+                precedence: crate::domain::event::Precedence::Bride,
                 event_date: NaiveDate::from_ymd_opt(2026, 9, 25).unwrap(),
                 start_time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
                 end_time: NaiveTime::from_hms_opt(15, 0, 0).unwrap(),

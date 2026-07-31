@@ -419,7 +419,7 @@ fn render_all_plain(event: &Event, guests: &[Guest]) -> Result<Vec<u8>, DomainEr
     let black = Color::Rgb(Rgb::new(0.0, 0.0, 0.0, None));
 
     let lines = [
-        ("{bride_name} & {groom_name}", 28.0, 185.0),
+        ("{first_name} & {second_name}", 28.0, 185.0),
         ("{guest_name}", 18.0, 165.0),
         ("{event_date_full}", 14.0, 145.0),
         ("From {start_time} to {end_time}", 14.0, 133.0),
@@ -553,6 +553,18 @@ fn resolve_tokens(e: &Event, g: &Guest) -> HashMap<&'static str, String> {
     m.insert("groom_family_name", e.groom_family_name.clone());
     m.insert("bride_phone", e.bride_phone.clone());
     m.insert("groom_phone", e.groom_phone.clone());
+    // Precedence-ordered aliases: `first_*` is the leading side, `second_*` the
+    // other. The config uses these for the paired lines so their fixed positions
+    // stay put while only the content flips.
+    let (first_name, second_name) = e.ordered_names();
+    let (first_family, second_family) = e.ordered_family_names();
+    let (first_phone, second_phone) = e.ordered_phones();
+    m.insert("first_name", first_name.to_owned());
+    m.insert("second_name", second_name.to_owned());
+    m.insert("first_family_name", first_family.to_owned());
+    m.insert("second_family_name", second_family.to_owned());
+    m.insert("first_phone", first_phone.to_owned());
+    m.insert("second_phone", second_phone.to_owned());
     m.insert("guest_name", g.name.clone());
     m.insert("day_name", e.event_date.format("%A").to_string());
     m.insert("day", e.event_date.day().to_string());

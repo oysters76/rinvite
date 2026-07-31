@@ -1,6 +1,37 @@
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use uuid::Uuid;
 
+/// Which side of the couple is listed first everywhere the two appear together
+/// on the invite — family names, personal names, RSVP phone numbers, monogram,
+/// footer, and message text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Precedence {
+    /// Bride's side first — the historical default.
+    #[default]
+    Bride,
+    /// Groom's side first.
+    Groom,
+}
+
+impl Precedence {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Precedence::Bride => "bride",
+            Precedence::Groom => "groom",
+        }
+    }
+
+    /// Lenient parse: anything other than `"groom"` (including blank input and
+    /// legacy rows) resolves to the `Bride` default, keeping current invites
+    /// bride-first.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "groom" => Precedence::Groom,
+            _ => Precedence::Bride,
+        }
+    }
+}
+
 /// A wedding ceremony created and owned by a user. Pure domain type — no
 /// framework, transport, or database types leak in here.
 #[derive(Debug, Clone)]
@@ -15,6 +46,8 @@ pub struct Event {
     pub bride_phone: String,
     /// RSVP contact number for the groom's side.
     pub groom_phone: String,
+    /// Whose side is listed first on the invite.
+    pub precedence: Precedence,
     pub event_date: NaiveDate,
     pub start_time: NaiveTime,
     pub end_time: NaiveTime,
@@ -38,6 +71,7 @@ pub struct NewEvent {
     pub groom_family_name: String,
     pub bride_phone: String,
     pub groom_phone: String,
+    pub precedence: Precedence,
     pub event_date: NaiveDate,
     pub start_time: NaiveTime,
     pub end_time: NaiveTime,
@@ -56,6 +90,7 @@ pub struct EventUpdate {
     pub groom_family_name: Option<String>,
     pub bride_phone: Option<String>,
     pub groom_phone: Option<String>,
+    pub precedence: Option<Precedence>,
     pub event_date: Option<NaiveDate>,
     pub start_time: Option<NaiveTime>,
     pub end_time: Option<NaiveTime>,
@@ -79,6 +114,7 @@ impl Event {
             groom_family_name: details.groom_family_name,
             bride_phone: details.bride_phone,
             groom_phone: details.groom_phone,
+            precedence: details.precedence,
             event_date: details.event_date,
             start_time: details.start_time,
             end_time: details.end_time,
@@ -109,6 +145,9 @@ impl Event {
         }
         if let Some(v) = u.groom_phone {
             self.groom_phone = v;
+        }
+        if let Some(v) = u.precedence {
+            self.precedence = v;
         }
         if let Some(v) = u.event_date {
             self.event_date = v;
@@ -142,6 +181,7 @@ impl Event {
             groom_family_name: self.groom_family_name.clone(),
             bride_phone: self.bride_phone.clone(),
             groom_phone: self.groom_phone.clone(),
+            precedence: self.precedence,
             event_date: self.event_date,
             start_time: self.start_time,
             end_time: self.end_time,
@@ -150,5 +190,82 @@ impl Event {
             rsvp_by: self.rsvp_by,
             poruwa_ceremony_time: self.poruwa_ceremony_time,
         }
+    }
+
+    /// Bride/groom personal names as `(first, second)`, ordered by precedence.
+    pub fn ordered_names(&self) -> (&str, &str) {
+        self.order((&self.bride_name, &self.groom_name))
+    }
+
+    /// Bride/groom family names as `(first, second)`, ordered by precedence.
+    pub fn ordered_family_names(&self) -> (&str, &str) {
+        self.order((&self.bride_family_name, &self.groom_family_name))
+    }
+
+    /// Bride/groom RSVP phone numbers as `(first, second)`, ordered by precedence.
+    pub fn ordered_phones(&self) -> (&str, &str) {
+        self.order((&self.bride_phone, &self.groom_phone))
+    }
+
+    /// Return a `(bride_side, groom_side)` pair as `(first, second)`: unchanged
+    /// when the bride takes precedence, swapped when the groom does.
+    fn order<'a>(&self, sides: (&'a str, &'a str)) -> (&'a str, &'a str) {
+        match self.precedence {
+            Precedence::Bride => sides,
+            Precedence::Groom => (sides.1, sides.0),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+
+    fn event_with(precedence: Precedence) -> Event {
+        Event::new(
+            Uuid::new_v4(),
+            NewEvent {
+                bride_name: "Bride".into(),
+                bride_family_name: "BrideFam".into(),
+                groom_name: "Groom".into(),
+                groom_family_name: "GroomFam".into(),
+                bride_phone: "111".into(),
+                groom_phone: "222".into(),
+                precedence,
+                event_date: NaiveDate::from_ymd_opt(2026, 9, 25).unwrap(),
+                start_time: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+                end_time: NaiveTime::from_hms_opt(15, 0, 0).unwrap(),
+                hall_name: "Hall".into(),
+                venue_name: "Venue".into(),
+                rsvp_by: NaiveDate::from_ymd_opt(2026, 8, 20).unwrap(),
+                poruwa_ceremony_time: None,
+            },
+            Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap(),
+        )
+    }
+
+    #[test]
+    fn bride_precedence_keeps_bride_first() {
+        let e = event_with(Precedence::Bride);
+        assert_eq!(e.ordered_names(), ("Bride", "Groom"));
+        assert_eq!(e.ordered_family_names(), ("BrideFam", "GroomFam"));
+        assert_eq!(e.ordered_phones(), ("111", "222"));
+    }
+
+    #[test]
+    fn groom_precedence_swaps_to_groom_first() {
+        let e = event_with(Precedence::Groom);
+        assert_eq!(e.ordered_names(), ("Groom", "Bride"));
+        assert_eq!(e.ordered_family_names(), ("GroomFam", "BrideFam"));
+        assert_eq!(e.ordered_phones(), ("222", "111"));
+    }
+
+    #[test]
+    fn precedence_parse_defaults_to_bride() {
+        assert_eq!(Precedence::parse("groom"), Precedence::Groom);
+        assert_eq!(Precedence::parse("bride"), Precedence::Bride);
+        assert_eq!(Precedence::parse(""), Precedence::Bride);
+        assert_eq!(Precedence::parse("nonsense"), Precedence::Bride);
     }
 }
