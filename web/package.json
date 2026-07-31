@@ -43,6 +43,7 @@
 		"bits-ui": "^2.18.1",
 		"clsx": "^2.1.1",
 		"formsnap": "^2.0.1",
+		"konva": "^10.3.0",
 		"mode-watcher": "^1.1.0",
 		"svelte-sonner": "^1.1.1",
 		"sveltekit-superforms": "^2.30.2",

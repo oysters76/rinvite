@@ -30,6 +30,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import LimitReachedDialog from '$lib/components/LimitReachedDialog.svelte';
 	import SendReportDialog from '$lib/components/SendReportDialog.svelte';
+	import ThankYouCardDialog from '$lib/components/ThankYouCardDialog.svelte';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
@@ -40,6 +41,7 @@
 		ArrowLeft,
 		ChevronDown,
 		Download,
+		ImagePlus,
 		Mail,
 		Pencil,
 		Plus,
@@ -68,6 +70,7 @@
 	let editingGuest = $state<Guest | null>(null);
 	let showCsv = $state(false);
 	let showReport = $state(false);
+	let showThankYou = $state(false);
 	let report = $state<BatchSendReport | null>(null);
 	let quickAddName = $state('');
 	let quickAddChannel = $state<InviteChannel>('einvite');
@@ -80,7 +83,12 @@
 		action: () => void | Promise<void>;
 	}>({ open: false, title: '', description: '', label: 'Confirm', action: () => {} });
 
-	function ask(title: string, description: string, label: string, action: () => void | Promise<void>) {
+	function ask(
+		title: string,
+		description: string,
+		label: string,
+		action: () => void | Promise<void>
+	) {
 		confirm = { open: true, title, description, label, action };
 	}
 
@@ -235,15 +243,20 @@
 		});
 	}
 	function sendAll() {
-		ask('Send all e-invites?', `Send to all ${stats.einvite} e-invite guests.`, 'Send', async () => {
-			try {
-				report = await invites.sendBatch(eventId);
-				showReport = true;
-				await refresh();
-			} catch (e) {
-				toast.error(e instanceof ApiError ? e.message : 'Send failed');
+		ask(
+			'Send all e-invites?',
+			`Send to all ${stats.einvite} e-invite guests.`,
+			'Send',
+			async () => {
+				try {
+					report = await invites.sendBatch(eventId);
+					showReport = true;
+					await refresh();
+				} catch (e) {
+					toast.error(e instanceof ApiError ? e.message : 'Send failed');
+				}
 			}
-		});
+		);
 	}
 	async function downloadPrintAll() {
 		try {
@@ -288,6 +301,9 @@
 				</p>
 			</div>
 			<div class="flex gap-2">
+				<Button variant="ghost" onclick={() => (showThankYou = true)}>
+					Thank-you card <ImagePlus class="size-4" />
+				</Button>
 				<Button variant="ghost" onclick={() => (showEditEvent = true)}>
 					Edit event <Pencil class="size-4" />
 				</Button>
@@ -308,7 +324,9 @@
 				>
 					<span class="text-[13px] font-semibold">{selectedIds.length} selected</span>
 					<Button variant="secondary" onclick={() => moveSelected('print')}>Move to print</Button>
-					<Button variant="secondary" onclick={() => moveSelected('einvite')}>Move to e-invite</Button>
+					<Button variant="secondary" onclick={() => moveSelected('einvite')}
+						>Move to e-invite</Button
+					>
 					{#if selectedHasEinvite}
 						<Button variant="secondary" onclick={sendSelectedGuests}>Send e-invite</Button>
 					{/if}
@@ -432,3 +450,4 @@
 	onconfirm={confirm.action}
 />
 <SendReportDialog bind:open={showReport} {report} />
+<ThankYouCardDialog bind:open={showThankYou} {event} />
