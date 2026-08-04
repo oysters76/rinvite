@@ -13,6 +13,6 @@ resource "digitalocean_database_cluster" "pg" {
   engine     = "pg"
   version    = var.db_version
   size       = var.db_size
-  region     = var.region
+  region     = var.db_region
   node_count = 1
 }

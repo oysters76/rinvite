@@ -88,7 +88,7 @@ necessary.
 
 - **Secrets and state.** The local `terraform.tfstate` contains the DB URI and the JWT secret and is
   git-ignored. For a team, use the DO Spaces backend that is commented in `versions.tf`.
-- **Region.** The app and Postgres share `var.region`, so they talk over the private network.
+- **Region.** Keep `var.app_region` and `var.db_region` in the same datacenter, so the app and Postgres talk over the private network. They are separate variables because the two APIs name the same datacenter differently: an app uses `blr`, a database uses `blr1`.
 - **Branded print PDF.** The backend image includes the card assets and `PDF_CONFIG`, so the
   floral-gold PDF renders in production with no extra config.
 - **Public-repo alternative to GitHub OAuth.** Replace the `github { … }` blocks in

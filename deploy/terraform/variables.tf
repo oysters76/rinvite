@@ -15,10 +15,21 @@ variable "invite_base_url" {
   default     = "https://rinvite.ceykod.com"
 }
 
-variable "region" {
-  description = "DigitalOcean region slug. The app and its Postgres cluster must share a region for private networking."
+# App Platform and managed databases use different region slugs for the same
+# datacenter — Bangalore is "blr" for an app and "blr1" for a cluster — so they
+# need separate variables. Keep both in the same datacenter: the app reaches the
+# cluster over the private network, and a mismatch sends every query across the
+# public internet instead.
+variable "app_region" {
+  description = "App Platform region slug for the API and web apps, e.g. \"blr\" (Bangalore) or \"nyc\" (New York). Note App Platform slugs carry no trailing digit."
   type        = string
-  default     = "nyc3"
+  default     = "blr"
+}
+
+variable "db_region" {
+  description = "Managed-database region slug for the Postgres cluster, e.g. \"blr1\" (Bangalore) or \"nyc3\" (New York). Must be the same datacenter as app_region. Changing it makes DigitalOcean migrate the cluster online — the data is kept, but the host changes and connections fail over, so expect a short interruption."
+  type        = string
+  default     = "blr1"
 }
 
 variable "github_repo" {

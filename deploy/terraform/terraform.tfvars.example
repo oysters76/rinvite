@@ -14,7 +14,8 @@ root_domain = "example.com"
 # invite_base_url = "https://rinvite.ceykod.com"
 
 # Optional — sensible defaults exist for all of these:
-# region                = "nyc3"
+# app_region            = "blr"    # App Platform slug, e.g. blr (Bangalore), nyc
+# db_region             = "blr1"   # database slug for the SAME datacenter, e.g. blr1, nyc3
 # github_repo           = "oysters76/rinvite"
 # github_branch         = "master"
 # service_instance_size = "basic-xxs"

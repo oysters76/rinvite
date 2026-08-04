@@ -5,7 +5,7 @@
 resource "digitalocean_app" "backend" {
   spec {
     name   = "rinvite-api"
-    region = var.region
+    region = var.app_region
 
     domain {
       name = local.api_host
