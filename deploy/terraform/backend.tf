@@ -1,6 +1,7 @@
 # Backend: the Rust/Axum service, built from the repo Dockerfile and served at
-# api.<root_domain>. It also server-renders the e-invite pages (/i/{token}), so
-# invite links point here (PUBLIC_BASE_URL).
+# api.<root_domain>. It also server-renders the e-invite pages (/i/{token}),
+# which guests reach through the reverse proxy at INVITE_BASE_URL rather than on
+# this host directly (the api.* URLs keep working for already-sent invites).
 resource "digitalocean_app" "backend" {
   spec {
     name   = "rinvite-api"
@@ -45,6 +46,13 @@ resource "digitalocean_app" "backend" {
       env {
         key   = "PUBLIC_BASE_URL"
         value = local.api_url
+        scope = "RUN_TIME"
+      }
+      # Emailed invite links are built from this, not from PUBLIC_BASE_URL: it
+      # points at the reverse proxy that fronts /i/*. See var.invite_base_url.
+      env {
+        key   = "INVITE_BASE_URL"
+        value = local.invite_url
         scope = "RUN_TIME"
       }
       # Verification-email links point at the frontend SPA (/verify), not the API.

@@ -4,6 +4,11 @@ locals {
   frontend_url = "https://${var.root_domain}"
   api_url      = "https://${local.api_host}"
 
+  # Where emailed invite links point. Normally a reverse proxy in front of the
+  # API's /i/* routes, so guests never see the api.* host. Empty falls back to
+  # the API's own URL (what the links were before the proxy existed).
+  invite_url = trimspace(var.invite_base_url) != "" ? trimspace(var.invite_base_url) : local.api_url
+
   # The SPA is reachable on both the apex and www; allow both as CORS origins.
   cors_origins = "https://${var.root_domain},https://www.${var.root_domain}"
 

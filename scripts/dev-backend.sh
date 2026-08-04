@@ -10,4 +10,7 @@ export PDF_CONFIG_RELOAD=1
 # persists accounts across restarts. Unset this to fall back to in-memory repos.
 export DATABASE_URL="${DATABASE_URL:-postgres://auth:auth@localhost:5432/auth}"
 export PUBLIC_BASE_URL="http://localhost:3000"
+# Invite links fall back to PUBLIC_BASE_URL. Set this to test the reverse-proxy
+# host that fronts /i/* in production:
+#   export INVITE_BASE_URL="https://rinvite.ceykod.com"
 exec target/debug/rinvite

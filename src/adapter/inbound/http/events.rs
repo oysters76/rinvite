@@ -13,7 +13,7 @@ use super::auth_extractor::AuthUser;
 use super::{ApiError, AppState};
 use crate::domain::error::DomainError;
 use crate::domain::event::{Event, EventUpdate, NewEvent, Precedence};
-use crate::domain::guest::{Guest, GuestUpdate, InviteChannel, NewGuest};
+use crate::domain::guest::{Guest, GuestUpdate, InviteChannel, NewGuest, invite_url};
 use crate::domain::port::inbound::BatchSendReport;
 
 pub fn router() -> Router<AppState> {
@@ -164,7 +164,7 @@ struct GuestResponse {
 }
 
 fn guest_response(g: Guest, base_url: &str) -> GuestResponse {
-    let invite_url = format!("{base_url}/i/{}", g.invite_token);
+    let invite_url = invite_url(base_url, &g.invite_token);
     GuestResponse {
         id: g.id,
         name: g.name,
@@ -286,7 +286,7 @@ async fn add_guest(
     let guest = state.events.add_guest(owner_id, event_id, details).await?;
     Ok((
         StatusCode::CREATED,
-        Json(guest_response(guest, &state.public_base_url)),
+        Json(guest_response(guest, &state.invite_base_url)),
     )
         .into_response())
 }
@@ -322,7 +322,7 @@ async fn add_guests_bulk(
         .await?;
     let body: Vec<GuestResponse> = guests
         .into_iter()
-        .map(|g| guest_response(g, &state.public_base_url))
+        .map(|g| guest_response(g, &state.invite_base_url))
         .collect();
     Ok((StatusCode::CREATED, Json(body)).into_response())
 }
@@ -336,7 +336,7 @@ async fn list_guests(
     Ok(Json(
         guests
             .into_iter()
-            .map(|g| guest_response(g, &state.public_base_url))
+            .map(|g| guest_response(g, &state.invite_base_url))
             .collect(),
     ))
 }
@@ -347,7 +347,7 @@ async fn get_guest(
     Path((event_id, guest_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<GuestResponse>, ApiError> {
     let guest = state.events.get_guest(owner_id, event_id, guest_id).await?;
-    Ok(Json(guest_response(guest, &state.public_base_url)))
+    Ok(Json(guest_response(guest, &state.invite_base_url)))
 }
 
 /// Partial guest update — only the fields present are changed. Contact fields
@@ -378,7 +378,7 @@ async fn update_guest(
         .events
         .update_guest(owner_id, event_id, guest_id, update)
         .await?;
-    Ok(Json(guest_response(guest, &state.public_base_url)))
+    Ok(Json(guest_response(guest, &state.invite_base_url)))
 }
 
 async fn delete_guest(

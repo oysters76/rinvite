@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::domain::error::DomainError;
 use crate::domain::event::{Event, EventUpdate, NewEvent};
 use crate::domain::guest::InviteChannel;
-use crate::domain::guest::{Guest, GuestUpdate, NewGuest};
+use crate::domain::guest::{Guest, GuestUpdate, NewGuest, invite_url};
 use crate::domain::port::inbound::{BatchSendReport, EventService, SendResult, SendStatus};
 use crate::domain::port::outbound::{
     Clock, EventRepository, GuestRepository, InvitePdfRenderer, InviteSender, UserRepository,
@@ -24,8 +24,9 @@ pub struct EventServiceImpl {
     pdf: Arc<dyn InvitePdfRenderer>,
     sender: Arc<dyn InviteSender>,
     clock: Arc<dyn Clock>,
-    /// Public base URL used to build shareable invite links.
-    public_base_url: String,
+    /// Public base URL guests reach invite links on — usually a reverse proxy in
+    /// front of this API's `/i/*` routes, so it may differ from our own host.
+    invite_base_url: String,
 }
 
 impl EventServiceImpl {
@@ -36,7 +37,7 @@ impl EventServiceImpl {
         pdf: Arc<dyn InvitePdfRenderer>,
         sender: Arc<dyn InviteSender>,
         clock: Arc<dyn Clock>,
-        public_base_url: String,
+        invite_base_url: String,
     ) -> Self {
         Self {
             events,
@@ -45,7 +46,7 @@ impl EventServiceImpl {
             pdf,
             sender,
             clock,
-            public_base_url,
+            invite_base_url,
         }
     }
 
@@ -271,7 +272,7 @@ impl EventService for EventServiceImpl {
     ) -> Result<String, DomainError> {
         let event = self.owned_event(owner_id, event_id).await?; // ownership gate
         let guest = self.guest_of(event_id, guest_id).await?;
-        let invite_url = format!("{}/i/{}", self.public_base_url, guest.invite_token);
+        let invite_url = invite_url(&self.invite_base_url, &guest.invite_token);
         self.sender.send(&event, &guest, &invite_url).await?;
         Ok(invite_url)
     }
@@ -332,9 +333,9 @@ impl EventService for EventServiceImpl {
             .map(|(i, guest)| {
                 let event = Arc::clone(&event);
                 let sender = Arc::clone(&self.sender);
-                let base_url = self.public_base_url.clone();
+                let base_url = self.invite_base_url.clone();
                 async move {
-                    let url = format!("{}/i/{}", base_url, guest.invite_token);
+                    let url = invite_url(&base_url, &guest.invite_token);
                     let (status, detail) = match sender.send(&event, &guest, &url).await {
                         Ok(()) => (SendStatus::Sent, None),
                         Err(e) => (SendStatus::Failed, Some(e.to_string())),
@@ -436,6 +437,20 @@ mod tests {
         }
     }
 
+    /// Records every URL handed to the sender, so a test can assert the exact
+    /// link a guest receives.
+    #[derive(Default)]
+    struct CapturingSender {
+        urls: Mutex<Vec<String>>,
+    }
+    #[async_trait]
+    impl InviteSender for CapturingSender {
+        async fn send(&self, _event: &Event, _guest: &Guest, url: &str) -> Result<(), DomainError> {
+            self.urls.lock().unwrap().push(url.to_owned());
+            Ok(())
+        }
+    }
+
     struct FixedClock(DateTime<Utc>);
     impl Clock for FixedClock {
         fn now(&self) -> DateTime<Utc> {
@@ -494,6 +509,54 @@ mod tests {
             phone: None,
             max_party_size: 2,
         }
+    }
+
+    /// Emailed links must carry the configured public host — a reverse proxy in
+    /// front of our `/i/*` routes — and never this API's own address. Both the
+    /// single and the batch send path must agree on it.
+    #[tokio::test]
+    async fn invite_links_use_the_configured_invite_base_url() {
+        let store = Arc::new(InMemoryEventStore::new());
+        let clock: Arc<dyn Clock> = Arc::new(FixedClock(
+            Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap(),
+        ));
+        let (users, owner) = user_on_plan(Plan::Max).await;
+        let sender = Arc::new(CapturingSender::default());
+        let svc = EventServiceImpl::new(
+            store.clone(),
+            store.clone(),
+            users,
+            Arc::new(FakePdf {
+                last_batch: Mutex::new(0),
+            }),
+            sender.clone(),
+            clock,
+            // Trailing slash included on purpose: it comes from an env var.
+            "https://rinvite.ceykod.com/".into(),
+        );
+
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+        let g = svc
+            .add_guest(owner, ev.id, guest("Ravi", InviteChannel::EInvite))
+            .await
+            .unwrap();
+        let expected = format!("https://rinvite.ceykod.com/i/{}", g.invite_token);
+
+        // Single send: the URL is both delivered and reported back to the caller.
+        let returned = svc.send_invite(owner, ev.id, g.id).await.unwrap();
+        assert_eq!(returned, expected);
+        assert_eq!(
+            sender.urls.lock().unwrap().as_slice(),
+            std::slice::from_ref(&expected)
+        );
+
+        // Batch send builds the URL on a separate code path — same result.
+        sender.urls.lock().unwrap().clear();
+        svc.send_einvite_batch(owner, ev.id).await.unwrap();
+        assert_eq!(
+            sender.urls.lock().unwrap().as_slice(),
+            std::slice::from_ref(&expected)
+        );
     }
 
     #[tokio::test]

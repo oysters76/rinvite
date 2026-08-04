@@ -9,6 +9,12 @@ variable "root_domain" {
   type        = string
 }
 
+variable "invite_base_url" {
+  description = "Public base URL for guest-facing invite links — a reverse proxy in front of the API's /i/* routes. Links look like <invite_base_url>/i/<token>. Empty = point links at the API host directly."
+  type        = string
+  default     = "https://rinvite.ceykod.com"
+}
+
 variable "region" {
   description = "DigitalOcean region slug. The app and its Postgres cluster must share a region for private networking."
   type        = string

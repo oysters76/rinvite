@@ -15,6 +15,17 @@ fn short_token() -> String {
     String::from_utf8(out.to_vec()).expect("base62 is valid ASCII")
 }
 
+/// Canonical path prefix for guest-facing invite links (see the `/i/{token}`
+/// routes in the HTTP adapter).
+pub const INVITE_PATH_PREFIX: &str = "/i";
+
+/// Build the shareable invite link for a token. `base` is the public origin the
+/// guest reaches — usually a reverse proxy in front of the API — and may carry a
+/// trailing slash.
+pub fn invite_url(base: &str, token: &str) -> String {
+    format!("{}{INVITE_PATH_PREFIX}/{token}", base.trim_end_matches('/'))
+}
+
 /// How a guest is invited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InviteChannel {
@@ -234,6 +245,32 @@ mod tests {
             a.chars().all(|c| c.is_ascii_alphanumeric()),
             "token is URL-safe (base62): {a}"
         );
+    }
+
+    #[test]
+    fn invite_url_joins_base_and_token() {
+        assert_eq!(
+            invite_url("https://rinvite.ceykod.com", "4VHmLjQrcrav"),
+            "https://rinvite.ceykod.com/i/4VHmLjQrcrav"
+        );
+    }
+
+    #[test]
+    fn invite_url_tolerates_trailing_slash_on_base() {
+        // Operators set the base from an env var; a stray trailing slash must not
+        // produce a double slash in the link we email out.
+        assert_eq!(
+            invite_url("https://rinvite.ceykod.com/", "4VHmLjQrcrav"),
+            "https://rinvite.ceykod.com/i/4VHmLjQrcrav"
+        );
+    }
+
+    #[test]
+    fn invite_url_preserves_token_case() {
+        // base62 tokens are case-sensitive — the lookup fails if we mangle them.
+        let token = guest(2).invite_token;
+        let url = invite_url("http://localhost:3000", &token);
+        assert_eq!(url, format!("http://localhost:3000/i/{token}"));
     }
 
     #[test]

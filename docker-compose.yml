@@ -30,6 +30,10 @@ services:
       # Required (>=32 bytes). Errors out at boot if unset — set it in .env.
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env, e.g. openssl rand -hex 32}
       DATABASE_URL: postgres://auth:${POSTGRES_PASSWORD:-auth}@db:5432/auth
+      # Without these, emailed links point at http://localhost:3000, which is
+      # unreachable for the guest receiving them.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      INVITE_BASE_URL: ${INVITE_BASE_URL:-}
     ports:
       - "3000:3000"
     restart: unless-stopped
