@@ -23,6 +23,7 @@
 	} from '$lib/services';
 	import { coupleTitle, fmtDate } from '$lib/format';
 	import StatBar from '$lib/components/StatBar.svelte';
+	import ChannelFilter from '$lib/components/ChannelFilter.svelte';
 	import GuestTable from '$lib/components/GuestTable.svelte';
 	import EventFormDialog from '$lib/components/EventFormDialog.svelte';
 	import GuestFormDialog from '$lib/components/GuestFormDialog.svelte';
@@ -61,6 +62,7 @@
 
 	let search = $state('');
 	let filterStatus = $state<'all' | RsvpStatus>('all');
+	let filterChannel = $state<'all' | InviteChannel>('all');
 	let sortKey = $state<SortKey>('name');
 	let sortDir = $state<'asc' | 'desc'>('asc');
 	let selectedIds = $state<string[]>([]);
@@ -120,8 +122,15 @@
 	onMount(loadAll);
 
 	const stats = $derived(computeStats(guests));
-	const filter = $derived<GuestFilter>({ search, channel: 'all', status: filterStatus });
+	const filter = $derived<GuestFilter>({ search, channel: filterChannel, status: filterStatus });
 	const view = $derived(filterSortGuests(guests, filter, sortKey, sortDir));
+	/** Counts for the channel tabs — reflect the current search/status so they sum to the table. */
+	const channelCounts = $derived.by(() => {
+		const s = computeStats(
+			filterSortGuests(guests, { ...filter, channel: 'all' }, sortKey, sortDir)
+		);
+		return { all: s.total, einvite: s.einvite, print: s.print };
+	});
 	const allSelected = $derived(view.length > 0 && view.every((g) => selectedIds.includes(g.id)));
 	const hasSelection = $derived(selectedIds.length > 0);
 	const selectedHasEinvite = $derived(
@@ -144,6 +153,11 @@
 		selectedIds = ids.every((id) => selectedIds.includes(id))
 			? selectedIds.filter((id) => !ids.includes(id))
 			: Array.from(new Set([...selectedIds, ...ids]));
+	}
+	function setChannel(c: 'all' | InviteChannel) {
+		filterChannel = c;
+		// Drop selections that just went out of view so bulk actions can't hit hidden rows.
+		selectedIds = selectedIds.filter((id) => view.some((g) => g.id === id));
 	}
 	function sort(key: SortKey) {
 		if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
@@ -315,6 +329,11 @@
 
 		<div class="my-6"><StatBar {stats} /></div>
 		<div class="border-t-2"></div>
+
+		<!-- Channel filter — outside the toolbar so it stays visible during bulk selection -->
+		<div class="mt-4">
+			<ChannelFilter value={filterChannel} counts={channelCounts} onSelect={setChannel} />
+		</div>
 
 		<!-- Toolbar -->
 		<div class="my-4">

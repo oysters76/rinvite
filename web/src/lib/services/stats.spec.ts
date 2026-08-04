@@ -46,6 +46,28 @@ describe('filterSortGuests', () => {
 		expect(filterSortGuests(list, { ...base, status: 'attending' }, 'name', 'asc')).toHaveLength(2);
 	});
 
+	it('composes channel, status and search as an intersection', () => {
+		const wide = filterSortGuests(list, { ...base, channel: 'einvite' }, 'name', 'asc');
+		expect(wide.map((g) => g.id)).toEqual(['1', '3', '4']);
+
+		const narrow = filterSortGuests(
+			list,
+			{ search: 'dan', channel: 'einvite', status: 'attending' },
+			'name',
+			'asc'
+		);
+		expect(narrow.map((g) => g.id)).toEqual(['4']);
+
+		// Same terms, other channel: Dan matches 'dan' + attending but is not print.
+		const none = filterSortGuests(
+			list,
+			{ search: 'dan', channel: 'print', status: 'attending' },
+			'name',
+			'asc'
+		);
+		expect(none).toEqual([]);
+	});
+
 	it('searches name and contact case-insensitively', () => {
 		const out = filterSortGuests(list, { ...base, search: 'DAN@X' }, 'name', 'asc');
 		expect(out.map((g) => g.id)).toEqual(['4']);
