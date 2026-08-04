@@ -43,9 +43,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("JWT_SECRET must be at least 32 bytes".into());
     }
     let token_ttl_secs: u64 = 24 * 60 * 60; // 1 day
-    // Base URL used to build shareable invite links.
-    let public_base_url =
-        std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_owned());
+    // Base URL used to build shareable invite links. INVITE_BASE_URL lets a
+    // reverse proxy / vanity host front our `/i/*` routes so guests never see the
+    // API's own domain; unset, links keep pointing at PUBLIC_BASE_URL.
+    let invite_base_url = std::env::var("INVITE_BASE_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            std::env::var("PUBLIC_BASE_URL")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        })
+        .unwrap_or_else(|| "http://localhost:3000".to_owned());
     // Frontend base URL, used to build the email-verification link (the /verify
     // page is served by the SvelteKit SPA, not the API).
     let frontend_base_url = std::env::var("FRONTEND_BASE_URL")
@@ -192,7 +201,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pdf,
         sender,
         clock.clone(),
-        public_base_url.clone(),
+        invite_base_url.clone(),
     ));
     let invites: Arc<dyn InviteService> = Arc::new(InviteServiceImpl::new(
         events_repo,
@@ -216,7 +225,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         invites,
         billing,
         verifier,
-        public_base_url,
+        invite_base_url,
         contact_email,
         einvite_template,
     });

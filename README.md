@@ -146,7 +146,9 @@ You set all configuration with environment variables:
 |---|:---:|---|---|
 | `JWT_SECRET` | ✅ | — | JWT signing key; **must be ≥ 32 bytes**. The server refuses to start without it. |
 | `DATABASE_URL` | | *(in‑memory)* | Postgres DSN, e.g. `postgres://user:pass@host:5432/db`. Unset → in‑memory store. |
-| `PUBLIC_BASE_URL` | | `http://localhost:3000` | Base URL used to build shareable invite links. |
+| `PUBLIC_BASE_URL` | | `http://localhost:3000` | Base URL of this API. Invite links use it when `INVITE_BASE_URL` is not set. |
+| `INVITE_BASE_URL` | | *(`PUBLIC_BASE_URL`)* | Base URL that guests use for invite links, e.g. `https://rinvite.ceykod.com`. Set it to a reverse proxy in front of the `/i/*` routes. |
+| `FRONTEND_BASE_URL` | | `http://localhost:5173` | Base URL of the web app. The email‑verification link uses it. |
 | `CORS_ALLOWED_ORIGINS` | | *(any origin)* | Comma‑separated allowlist for a browser frontend. Unset allows any origin (safe — auth is Bearer‑token, no cookies). |
 | `PDF_CONFIG` | | *(plain page)* | Path to the PDF layout JSON (see [Customizing the PDF](#customizing-the-pdf)). Unset → a plain text‑only fallback. |
 | `EINVITE_TEMPLATE` | | *(embedded)* | Path to a custom e‑invite HTML template. Unset → the built‑in [`assets/einvite/template.html`](assets/einvite/template.html). |
@@ -164,7 +166,7 @@ The server listens on **port 3000**.
 ### Plans, verification, and upgrade requests
 
 A new account starts unverified. Signup sends a verification link
-(`{PUBLIC_BASE_URL}/verify?token=…`), and **the server refuses login until the
+(`{FRONTEND_BASE_URL}/verify?token=…`), and **the server refuses login until the
 user confirms the email**. The user can request the link again from the signup
 or login screen.
 
@@ -194,7 +196,9 @@ one gets **email**. The server builds the message from the editable templates in
 [`assets/messages/`](assets/messages/) (`email.html`, `email.txt`,
 `email-subject.txt`, and `whatsapp.txt`). Each template accepts the placeholders
 `{guest_name} {couple} {bride_name} {groom_name} {date} {time} {venue} {hall}
-{rsvp_by} {invite_url}`. The links are short: `{PUBLIC_BASE_URL}/i/<token>`.
+{rsvp_by} {invite_url}`. The links are short: `{INVITE_BASE_URL}/i/<token>`, for
+example `https://rinvite.ceykod.com/i/4VHmLjQrcrav`. The server also answers
+these paths on its own host, thus links that you sent before stay usable.
 
 If you do not set provider keys, the server writes the message (with the link)
 to the server console instead. The dashboard's **Send** function continues to
@@ -241,6 +245,7 @@ See [deploy/terraform/README.md](deploy/terraform/README.md) for the full runboo
 - **Set a strong `JWT_SECRET`** (32 or more random bytes) and keep it out of version control.
 - **Set `DATABASE_URL`**. If you do not, the app uses the in-memory store and loses all data at restart.
 - **Set `PUBLIC_BASE_URL`** to your real public URL, so the invite links point to the correct place.
+- **Set `INVITE_BASE_URL`** if a reverse proxy gives the invite links a different host. The proxy must send the `/i/` paths to this server. It must also set a `Host` header that the server's platform accepts.
 - **Set `CORS_ALLOWED_ORIGINS`** to your frontend's origin or origins if you run a separate SPA.
 - Put the app behind a TLS-terminating reverse proxy (nginx, Caddy, or Traefik).
 - Mount your own `assets/` (card image, fonts, and templates) and point `PDF_CONFIG` and `EINVITE_TEMPLATE` at them. This gives the invitations your own brand without a rebuild.

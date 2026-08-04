@@ -38,7 +38,9 @@ pub struct AppState {
     pub invites: Arc<dyn InviteService>,
     pub billing: Arc<dyn BillingService>,
     pub verifier: Arc<dyn TokenVerifier>,
-    pub public_base_url: String,
+    /// Public base URL guests reach invite links on. May be a reverse proxy in
+    /// front of our own `/i/*` routes, so it is not necessarily this API's host.
+    pub invite_base_url: String,
     /// Business contact address shown to users in the "limit reached" dialog.
     pub contact_email: String,
     /// The e-invite HTML template, loaded once at startup.

@@ -8,6 +8,11 @@
 do_token    = "dop_v1_your_token_here"
 root_domain = "example.com"
 
+# Reverse proxy that fronts the API's /i/* routes; emailed invite links look
+# like <invite_base_url>/i/<token>. Set it to your own proxy, or "" to send
+# links pointing straight at api.<root_domain>.
+# invite_base_url = "https://rinvite.ceykod.com"
+
 # Optional — sensible defaults exist for all of these:
 # region                = "nyc3"
 # github_repo           = "oysters76/rinvite"
