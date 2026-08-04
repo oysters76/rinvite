@@ -3,7 +3,7 @@
 resource "digitalocean_app" "frontend" {
   spec {
     name   = "rinvite-web"
-    region = var.region
+    region = var.app_region
 
     domain {
       name = var.root_domain
