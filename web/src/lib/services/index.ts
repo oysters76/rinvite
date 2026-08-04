@@ -4,3 +4,4 @@ export * from './guest-validate';
 export * from './guest-bulk';
 export * from './events-overview';
 export * from './thankyou-card';
+export * from './print-card';

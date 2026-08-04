@@ -15,13 +15,14 @@
 		type CardEditor,
 		type CardModel
 	} from '$lib/services/thankyou-card';
+	import { printImage, type PrintFit } from '$lib/services/print-card';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Label } from '$lib/components/ui/label';
 	import { toast } from 'svelte-sonner';
-	import { ImagePlus, RotateCcw, Upload } from '@lucide/svelte';
+	import { ImagePlus, Printer, RotateCcw, Upload } from '@lucide/svelte';
 
 	let {
 		open = $bindable(false),
@@ -46,8 +47,11 @@
 	let zoom = $state(1);
 	let photoLoaded = $state(false);
 	let generating = $state(false);
+	let printing = $state(false);
 	let loadingEditor = $state(false);
 	let hasDragged = $state(false);
+	// Default to the fit that cannot clip the gold frame on any printer.
+	let printFit = $state<PrintFit>('margin');
 
 	// Width of the preview column, so the 400x600 stage can be scaled to fit.
 	let fitWidth = $state(0);
@@ -202,20 +206,38 @@
 		editor?.nudge(move[0], move[1]);
 	}
 
+	/**
+	 * Prefer the guest; fall back to the couple. An empty fallback lets the `||`
+	 * actually reach the second option.
+	 */
+	const cardName = () => `thank-you-${fileStem(guest, '') || fileStem(coupleLine(model()))}`;
+
 	async function generate() {
 		if (!editor || !photoLoaded) return;
 		generating = true;
 		try {
 			const blob = await editor.toBlob();
-			// Prefer the guest; fall back to the couple. An empty fallback lets the
-			// `||` actually reach the second option.
-			const stem = fileStem(guest, '') || fileStem(coupleLine(model()));
-			saveBlob(blob, `thank-you-${stem}.png`);
+			saveBlob(blob, `${cardName()}.png`);
 			toast.success('Thank-you card downloaded.');
 		} catch {
 			toast.error('Could not generate the card.');
 		} finally {
 			generating = false;
+		}
+	}
+
+	async function printCard() {
+		if (!editor || !photoLoaded) return;
+		printing = true;
+		try {
+			// The same 1200x1800 export the download uses — the preview canvas is
+			// only 400x600 and would print at about 100 DPI.
+			const blob = await editor.toBlob();
+			await printImage(blob, { title: cardName(), fit: printFit });
+		} catch {
+			toast.error('Could not open the print dialog. Download the PNG and print that instead.');
+		} finally {
+			printing = false;
 		}
 	}
 </script>
@@ -225,7 +247,8 @@
 		<Dialog.Header>
 			<Dialog.Title>Thank-you card</Dialog.Title>
 			<Dialog.Description>
-				Upload a photo, drag it to frame it, then download a print-ready 4×6 card.
+				Upload a photo, drag it to frame it, then print it on 4×6 photo paper — or download the card
+				as a PNG.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -284,6 +307,28 @@
 						</p>
 					</div>
 				{/if}
+
+				<fieldset class="flex flex-col gap-1.5">
+					<legend class="mb-1.5 text-sm leading-none font-medium">Printing</legend>
+					<label class="flex items-start gap-2 text-sm">
+						<input type="radio" bind:group={printFit} value="margin" class="mt-0.5" />
+						<span>
+							Keep a white border
+							<span class="text-muted-foreground block text-xs">
+								Safe on any printer. Recommended.
+							</span>
+						</span>
+					</label>
+					<label class="flex items-start gap-2 text-sm">
+						<input type="radio" bind:group={printFit} value="borderless" class="mt-0.5" />
+						<span>
+							Borderless
+							<span class="text-muted-foreground block text-xs">
+								Edge to edge. Only if your printer does borderless 4×6.
+							</span>
+						</span>
+					</label>
+				</fieldset>
 
 				<details class="border-border rounded-md border p-3">
 					<summary class="cursor-pointer text-sm font-medium">Card details</summary>
@@ -372,12 +417,29 @@
 			</div>
 		</div>
 
-		<Dialog.Footer>
-			<Button type="button" variant="secondary" onclick={() => (open = false)}>Cancel</Button>
-			<Button onclick={generate} disabled={!photoLoaded || generating}>
-				<ImagePlus class="mr-2 size-4" />
-				{generating ? 'Generating…' : 'Generate PNG'}
-			</Button>
-		</Dialog.Footer>
+		<div class="flex flex-col gap-2">
+			<Dialog.Footer>
+				<Button type="button" variant="secondary" onclick={() => (open = false)}>Cancel</Button>
+				<Button
+					type="button"
+					variant="secondary"
+					onclick={generate}
+					disabled={!photoLoaded || generating}
+				>
+					<ImagePlus class="mr-2 size-4" />
+					{generating ? 'Generating…' : 'Download PNG'}
+				</Button>
+				<Button onclick={printCard} disabled={!photoLoaded || printing}>
+					<Printer class="mr-2 size-4" />
+					{printing ? 'Preparing…' : 'Print card'}
+				</Button>
+			</Dialog.Footer>
+			<!-- Browsers honour `@page size` for the page box, but whatever paper the
+			     user picks in the dialog still wins — so say so rather than implying
+			     the size is fully automatic. -->
+			<p class="text-muted-foreground text-right text-xs">
+				In the print dialog, choose 4×6 in (10×15 cm) paper and set Scale to 100%.
+			</p>
+		</div>
 	</Dialog.Content>
 </Dialog.Root>
