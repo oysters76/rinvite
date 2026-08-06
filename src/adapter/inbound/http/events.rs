@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Path, State},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -16,6 +16,13 @@ use crate::domain::event::{Event, EventUpdate, NewEvent, Precedence};
 use crate::domain::guest::{Guest, GuestUpdate, InviteChannel, NewGuest, invite_url};
 use crate::domain::port::inbound::BatchSendReport;
 
+/// Body cap for the bulk guest import, overriding the much smaller global limit
+/// in `super::MAX_BODY_BYTES` for this one route. Sized against `MAX_BULK` in
+/// the event service: 500 guests at a generous ~250 bytes of JSON each is about
+/// 125 KB, so this leaves headroom for long names without being an open door.
+/// Change it and `MAX_BULK` together.
+const BULK_BODY_BYTES: usize = 256 * 1024;
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/events", post(create_event).get(list_events))
@@ -24,7 +31,12 @@ pub fn router() -> Router<AppState> {
             get(get_event).patch(update_event).delete(delete_event),
         )
         .route("/events/{id}/guests", post(add_guest).get(list_guests))
-        .route("/events/{id}/guests/bulk", post(add_guests_bulk))
+        .route(
+            "/events/{id}/guests/bulk",
+            // A route-level limit takes precedence over the global one applied
+            // in `super::routes`, so only this endpoint accepts a large body.
+            post(add_guests_bulk).layer(DefaultBodyLimit::max(BULK_BODY_BYTES)),
+        )
         .route(
             "/events/{id}/guests/{gid}",
             get(get_guest).patch(update_guest).delete(delete_guest),
@@ -316,10 +328,18 @@ async fn add_guests_bulk(
             })
         })
         .collect::<Result<Vec<_>, DomainError>>()?;
+    // Timed: bulk import is the one request whose cost scales with the payload,
+    // so log how long it actually took to make regressions visible in the logs.
+    let count = details.len();
+    let started = std::time::Instant::now();
     let guests = state
         .events
         .add_guests_bulk(owner_id, event_id, details)
         .await?;
+    println!(
+        "[bulk-import] event={event_id} guests={count} took={:?}",
+        started.elapsed()
+    );
     let body: Vec<GuestResponse> = guests
         .into_iter()
         .map(|g| guest_response(g, &state.invite_base_url))
