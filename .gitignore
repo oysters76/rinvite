@@ -7,3 +7,11 @@ web/node_modules/
 web/build/
 web/.svelte-kit/
 web/.env
+
+# whatsapp sender (wa-invite/)
+wa-invite/.venv/
+wa-invite/session/
+wa-invite/*.db
+wa-invite/*.egg-info/
+wa-invite/.pytest_cache/
+__pycache__/
