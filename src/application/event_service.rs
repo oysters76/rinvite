@@ -162,7 +162,9 @@ impl EventService for EventServiceImpl {
         self.owned_event(owner_id, event_id).await?; // ownership gate
 
         // Bound the batch: reject an empty upload, and cap the size so a single
-        // request can't be turned into a huge write.
+        // request can't be turned into a huge write. The HTTP adapter sizes the
+        // bulk route's body limit (`BULK_BODY_BYTES`) against this number — the
+        // two are a pair, so change them together.
         const MAX_BULK: usize = 500;
         if details.is_empty() {
             return Err(DomainError::InvalidInput("no guests to import".to_owned()));
@@ -877,6 +879,30 @@ mod tests {
         ));
         // Atomic: no partial insert up to the cap.
         assert!(svc.list_guests(owner, ev.id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn bulk_add_accepts_the_maximum_batch_but_rejects_one_more() {
+        let (svc, owner) = svc_on_plan(Plan::Max).await; // no per-event guest cap
+        let ev = svc.create_event(owner, sample_event()).await.unwrap();
+        let batch = |n: usize| -> Vec<NewGuest> {
+            (0..n)
+                .map(|i| guest(&format!("g{i}"), InviteChannel::Print))
+                .collect()
+        };
+        // MAX_BULK is 500: the boundary is accepted, one past it is not.
+        assert_eq!(
+            svc.add_guests_bulk(owner, ev.id, batch(500))
+                .await
+                .unwrap()
+                .len(),
+            500
+        );
+        assert!(matches!(
+            svc.add_guests_bulk(owner, ev.id, batch(501)).await,
+            Err(DomainError::InvalidInput(_))
+        ));
+        assert_eq!(svc.list_guests(owner, ev.id).await.unwrap().len(), 500);
     }
 
     #[tokio::test]

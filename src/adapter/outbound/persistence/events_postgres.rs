@@ -196,32 +196,70 @@ impl GuestRepository for PostgresEventStore {
     }
 
     async fn save_many(&self, guests: &[Guest]) -> Result<(), DomainError> {
-        // One transaction so a failure part-way rolls the whole batch back —
-        // callers rely on all-or-nothing semantics.
-        let mut tx = self.pool.begin().await.map_err(repo_err)?;
-        for g in guests {
-            sqlx::query(
-                "INSERT INTO guests (id, event_id, name, channel, email, phone, max_party_size, \
-                 invite_token, rsvp_status, party_size, responded_at, created_at) \
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
-            )
-            .bind(g.id)
-            .bind(g.event_id)
-            .bind(&g.name)
-            .bind(g.channel.as_str())
-            .bind(&g.email)
-            .bind(&g.phone)
-            .bind(g.max_party_size as i32)
-            .bind(&g.invite_token)
-            .bind(g.rsvp_status.as_str())
-            .bind(g.party_size.map(|p| p as i32))
-            .bind(g.responded_at)
-            .bind(g.created_at)
-            .execute(&mut *tx)
-            .await
-            .map_err(repo_err)?;
+        if guests.is_empty() {
+            return Ok(());
         }
-        tx.commit().await.map_err(repo_err)?;
+
+        // One multi-row INSERT rather than a statement per guest: a bulk import
+        // costs a single round trip instead of one per row, which is what made
+        // large CSV imports time out. A single statement is atomic on its own,
+        // so the all-or-nothing contract holds without an explicit transaction.
+        //
+        // UNNEST (twelve column arrays) rather than a generated VALUES list: the
+        // SQL text is constant, so sqlx's prepared-statement cache hits whatever
+        // the batch size is, and the parameter count stays at 12 — nowhere near
+        // the 65535 ceiling a per-row VALUES form would approach.
+        let mut ids = Vec::with_capacity(guests.len());
+        let mut event_ids = Vec::with_capacity(guests.len());
+        let mut names = Vec::with_capacity(guests.len());
+        let mut channels = Vec::with_capacity(guests.len());
+        let mut emails = Vec::with_capacity(guests.len());
+        let mut phones = Vec::with_capacity(guests.len());
+        let mut max_party_sizes = Vec::with_capacity(guests.len());
+        let mut invite_tokens = Vec::with_capacity(guests.len());
+        let mut rsvp_statuses = Vec::with_capacity(guests.len());
+        let mut party_sizes = Vec::with_capacity(guests.len());
+        let mut responded_ats = Vec::with_capacity(guests.len());
+        let mut created_ats = Vec::with_capacity(guests.len());
+
+        for g in guests {
+            // Same conversions as `save` above — keep the two in step.
+            ids.push(g.id);
+            event_ids.push(g.event_id);
+            names.push(g.name.clone());
+            channels.push(g.channel.as_str().to_owned());
+            emails.push(g.email.clone());
+            phones.push(g.phone.clone());
+            max_party_sizes.push(g.max_party_size as i32);
+            invite_tokens.push(g.invite_token.clone());
+            rsvp_statuses.push(g.rsvp_status.as_str().to_owned());
+            party_sizes.push(g.party_size.map(|p| p as i32));
+            responded_ats.push(g.responded_at);
+            created_ats.push(g.created_at);
+        }
+
+        sqlx::query(
+            "INSERT INTO guests (id, event_id, name, channel, email, phone, max_party_size, \
+             invite_token, rsvp_status, party_size, responded_at, created_at) \
+             SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], \
+             $6::text[], $7::int4[], $8::text[], $9::text[], $10::int4[], $11::timestamptz[], \
+             $12::timestamptz[])",
+        )
+        .bind(&ids)
+        .bind(&event_ids)
+        .bind(&names)
+        .bind(&channels)
+        .bind(&emails)
+        .bind(&phones)
+        .bind(&max_party_sizes)
+        .bind(&invite_tokens)
+        .bind(&rsvp_statuses)
+        .bind(&party_sizes)
+        .bind(&responded_ats)
+        .bind(&created_ats)
+        .execute(&self.pool)
+        .await
+        .map_err(repo_err)?;
         Ok(())
     }
 
@@ -290,5 +328,219 @@ impl GuestRepository for PostgresEventStore {
             .await
             .map_err(repo_err)?;
         Ok(())
+    }
+}
+
+/// Tests that need a real Postgres. They are `#[ignore]`d so `cargo test` stays
+/// database-free (CI has no database); run them against the docker-compose
+/// instance with:
+///
+/// ```text
+/// DATABASE_URL=postgres://... cargo test -- --ignored
+/// ```
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    /// Connect and migrate, or skip the test when no database is configured.
+    async fn pool_or_skip() -> Option<PgPool> {
+        let url = std::env::var("DATABASE_URL").ok()?;
+        let pool = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+            .expect("connect to DATABASE_URL");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("run migrations");
+        Some(pool)
+    }
+
+    /// An owner row and an event to hang the guests off — both FKs are enforced.
+    async fn seed_event(pool: &PgPool) -> (Uuid, Uuid) {
+        let owner_id = Uuid::new_v4();
+        sqlx::query("INSERT INTO users (id, email, password_hash) VALUES ($1,$2,$3)")
+            .bind(owner_id)
+            .bind(format!("save-many-{owner_id}@example.test"))
+            .bind("x")
+            .execute(pool)
+            .await
+            .expect("insert owner");
+
+        let event = Event {
+            id: Uuid::new_v4(),
+            owner_id,
+            bride_name: "Ann".to_owned(),
+            bride_family_name: "Silva".to_owned(),
+            groom_name: "Bo".to_owned(),
+            groom_family_name: "Perera".to_owned(),
+            bride_phone: "+94711111111".to_owned(),
+            groom_phone: "+94722222222".to_owned(),
+            precedence: Precedence::Bride,
+            event_date: NaiveDate::from_ymd_opt(2030, 6, 1).unwrap(),
+            start_time: NaiveTime::from_hms_opt(18, 0, 0).unwrap(),
+            end_time: NaiveTime::from_hms_opt(23, 0, 0).unwrap(),
+            hall_name: "Ballroom".to_owned(),
+            venue_name: "Rest House".to_owned(),
+            rsvp_by: NaiveDate::from_ymd_opt(2030, 5, 1).unwrap(),
+            poruwa_ceremony_time: None,
+            created_at: Utc::now(),
+        };
+        let store = PostgresEventStore::new(pool.clone());
+        EventRepository::save(&store, &event)
+            .await
+            .expect("save event");
+        (owner_id, event.id)
+    }
+
+    /// Deleting the event cascades to its guests; the owner goes last.
+    async fn cleanup(pool: &PgPool, owner_id: Uuid, event_id: Uuid) {
+        sqlx::query("DELETE FROM events WHERE id = $1")
+            .bind(event_id)
+            .execute(pool)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(owner_id)
+            .execute(pool)
+            .await
+            .ok();
+    }
+
+    /// The batched UNNEST insert is the risky part of this adapter: twelve array
+    /// binds, twelve casts, and a column order that has to line up. Insert a
+    /// batch larger than MAX_BULK covering both channels, both RSVP states, and
+    /// NULL/non-NULL on every nullable column, then read it all back.
+    #[tokio::test]
+    #[ignore = "requires a Postgres at DATABASE_URL"]
+    async fn save_many_round_trips_every_field() {
+        let Some(pool) = pool_or_skip().await else {
+            eprintln!("DATABASE_URL unset — skipping");
+            return;
+        };
+        let (owner_id, event_id) = seed_event(&pool).await;
+        let store = PostgresEventStore::new(pool.clone());
+
+        let responded = Utc::now();
+        let guests: Vec<Guest> = (0..600)
+            .map(|i| {
+                let answered = i % 2 == 0;
+                Guest {
+                    id: Uuid::new_v4(),
+                    event_id,
+                    name: format!("Guest {i}"),
+                    // Alternate the enums so neither variant goes unexercised.
+                    channel: if answered {
+                        InviteChannel::EInvite
+                    } else {
+                        InviteChannel::Print
+                    },
+                    // Every nullable column is NULL on half the rows.
+                    email: answered.then(|| format!("g{i}@example.test")),
+                    phone: answered.then(|| format!("+9477000{i:04}")),
+                    max_party_size: (i % 5) as u16 + 1,
+                    invite_token: format!("tok-{}", Uuid::new_v4()),
+                    rsvp_status: if answered {
+                        RsvpStatus::Attending
+                    } else {
+                        RsvpStatus::Pending
+                    },
+                    party_size: answered.then_some((i % 3) as u16 + 1),
+                    responded_at: answered.then_some(responded),
+                    created_at: Utc::now(),
+                }
+            })
+            .collect();
+
+        GuestRepository::save_many(&store, &guests)
+            .await
+            .expect("save_many");
+
+        let mut stored = store.list_by_event(event_id).await.expect("list_by_event");
+        assert_eq!(stored.len(), guests.len());
+
+        // list_by_event orders by created_at, which is not unique enough here.
+        stored.sort_by_key(|g| g.id);
+        let mut expected = guests.clone();
+        expected.sort_by_key(|g| g.id);
+        for (got, want) in stored.iter().zip(expected.iter()) {
+            assert_eq!(got.id, want.id);
+            assert_eq!(got.event_id, want.event_id);
+            assert_eq!(got.name, want.name);
+            assert_eq!(got.channel, want.channel);
+            assert_eq!(got.email, want.email);
+            assert_eq!(got.phone, want.phone);
+            assert_eq!(got.max_party_size, want.max_party_size);
+            assert_eq!(got.invite_token, want.invite_token);
+            assert_eq!(got.rsvp_status, want.rsvp_status);
+            assert_eq!(got.party_size, want.party_size);
+            assert_eq!(got.responded_at, want.responded_at);
+        }
+
+        cleanup(&pool, owner_id, event_id).await;
+    }
+
+    /// A duplicate invite_token violates the UNIQUE index. Because the batch is
+    /// a single statement, the failure must leave no rows behind at all.
+    #[tokio::test]
+    #[ignore = "requires a Postgres at DATABASE_URL"]
+    async fn save_many_is_all_or_nothing() {
+        let Some(pool) = pool_or_skip().await else {
+            eprintln!("DATABASE_URL unset — skipping");
+            return;
+        };
+        let (owner_id, event_id) = seed_event(&pool).await;
+        let store = PostgresEventStore::new(pool.clone());
+
+        let dup = format!("dup-{}", Uuid::new_v4());
+        let guests: Vec<Guest> = (0..3)
+            .map(|i| Guest {
+                id: Uuid::new_v4(),
+                event_id,
+                name: format!("Guest {i}"),
+                channel: InviteChannel::Print,
+                email: None,
+                phone: None,
+                max_party_size: 1,
+                // Rows 0 and 2 collide on the UNIQUE invite_token index.
+                invite_token: if i == 1 {
+                    format!("uniq-{}", Uuid::new_v4())
+                } else {
+                    dup.clone()
+                },
+                rsvp_status: RsvpStatus::Pending,
+                party_size: None,
+                responded_at: None,
+                created_at: Utc::now(),
+            })
+            .collect();
+
+        assert!(GuestRepository::save_many(&store, &guests).await.is_err());
+        assert!(
+            store
+                .list_by_event(event_id)
+                .await
+                .expect("list_by_event")
+                .is_empty(),
+            "a failed batch must not persist any rows"
+        );
+
+        cleanup(&pool, owner_id, event_id).await;
+    }
+
+    /// An empty batch short-circuits without touching the database.
+    #[tokio::test]
+    #[ignore = "requires a Postgres at DATABASE_URL"]
+    async fn save_many_accepts_an_empty_batch() {
+        let Some(pool) = pool_or_skip().await else {
+            eprintln!("DATABASE_URL unset — skipping");
+            return;
+        };
+        let store = PostgresEventStore::new(pool);
+        GuestRepository::save_many(&store, &[])
+            .await
+            .expect("empty batch is a no-op");
     }
 }
