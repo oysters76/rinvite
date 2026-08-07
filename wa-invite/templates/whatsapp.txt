@@ -1,0 +1,12 @@
+💐 *You're invited to {couple}'s wedding!*
+
+Dear {guest_name}, we'd be honoured to have you celebrate with us.
+
+📅 {date}
+🕙 {time}
+📍 {hall}, {venue}
+
+View your invitation & RSVP here:
+{invite_url}
+
+Kindly RSVP by {rsvp_by}. 💛

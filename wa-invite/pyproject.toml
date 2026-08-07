@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wa-invite"
+version = "0.1.0"
+description = "Send rinvite e-invites over WhatsApp from a locally paired account"
+requires-python = ">=3.10"
+dependencies = [
+    "neonize>=0.4.3",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "rich>=13.7",
+    "qrcode>=7.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+wa-invite = "wa_invite.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["wa_invite*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
